@@ -5,7 +5,7 @@ const canvas = document.getElementById("bug");
 const ctx = canvas.getContext("2d");
 
 let spend10 = 0;
-let x = 18;
+let x = 22;
 let dir = 1;
 let last = performance.now();
 
@@ -17,18 +17,17 @@ function fmtUsd(n) {
   return `$${v.toFixed(3)}`;
 }
 
+function heat(usd10) {
+  return Math.min(1, Math.max(0, usd10 || 0) / 100);
+}
+
 function speedFromSpend(usd10) {
-  const v = Math.max(0, usd10 || 0);
-  return 14 + Math.min(110, v * 18);
+  return 7 + heat(usd10) * 145;
 }
 
-function frenzyFromSpend(usd10) {
-  return Math.min(1, Math.max(0, usd10 || 0) / 8);
-}
-
-function dot(px, py, r, a) {
+function circle(px, py, r, color) {
   ctx.beginPath();
-  ctx.fillStyle = `rgba(255, ${Math.round(90 + a * 40)}, 20, ${0.75 + a * 0.25})`;
+  ctx.fillStyle = color;
   ctx.arc(px, py, r, 0, Math.PI * 2);
   ctx.fill();
 }
@@ -37,61 +36,76 @@ function drawCrawfish(t, frenzy) {
   const w = canvas.width;
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
-  const y = h * 0.58;
+
   const s = dir;
-  const wiggle = Math.sin(t * (8 + frenzy * 18));
-  const bob = Math.sin(t * (5 + frenzy * 10)) * (1 + frenzy);
+  const bounce = Math.abs(Math.sin(t * (5 + frenzy * 10))) * (1.2 + frenzy * 1.8);
+  const y = h * 0.62 - bounce;
+  const squash = 1 + Math.sin(t * (5 + frenzy * 10)) * 0.06;
+  const stretch = 1 - Math.sin(t * (5 + frenzy * 10)) * 0.05;
 
-  const body = [
-    [0, 0, 2.4],
-    [4, 0.4, 2.6],
-    [8, 0.2, 2.7],
-    [12, 0, 2.4],
-    [16, -0.3, 2.1],
-    [20, -0.6, 1.7],
-  ];
-  for (const [bx, by, r] of body) {
-    dot(x + s * bx, y + by + bob * 0.3, r, 0.7);
-  }
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s * stretch, squash);
 
-  // tail fan
+  // tail
   for (let i = -2; i <= 2; i++) {
-    const ang = i * 0.35 + wiggle * 0.12;
-    dot(x + s * (24 + Math.cos(ang) * 5), y - 0.8 + Math.sin(ang) * 5 + bob, 1.3, 0.45);
+    const ang = i * 0.42 + Math.sin(t * (4 + frenzy * 8)) * 0.12;
+    circle(16 + Math.cos(ang) * 6, Math.sin(ang) * 4.5, 2.1, "rgba(255,140,70,0.75)");
   }
 
-  // claws
-  const pinch = Math.sin(t * (6 + frenzy * 14)) * (2 + frenzy * 2);
-  dot(x + s * (-7), y - 5 + pinch * 0.15, 2.3, 1);
-  dot(x + s * (-11), y - 7 + pinch * 0.3, 1.7, 0.9);
-  dot(x + s * (-6), y + 3 - pinch * 0.1, 2.1, 1);
-  dot(x + s * (-10), y + 6 - pinch * 0.25, 1.6, 0.9);
+  // body
+  circle(4, 1, 9.2, "#ff7a2a");
+  circle(7, 0.4, 8.4, "#ff8a3a");
+  circle(1, 0.2, 7.6, "#ff9a4a");
 
-  // legs 뽈뽈뽈
-  for (let i = 0; i < 4; i++) {
-    const phase = t * (10 + frenzy * 22) + i * 0.9;
-    const kick = Math.sin(phase) * (3.2 + frenzy * 2.4);
-    const lx = x + s * (3 + i * 4.2);
-    dot(lx, y + 4.8 + Math.abs(kick) * 0.15, 1.15, 0.55);
-    dot(lx + s * kick * 0.35, y + 8.2 + kick * 0.2, 1.05, 0.4);
+  // blush
+  circle(-1.2, 2.6, 1.7, "rgba(255,120,140,0.55)");
+  circle(6.4, 2.8, 1.7, "rgba(255,120,140,0.55)");
+
+  // claws — chubby mittens
+  const pinch = Math.sin(t * (4 + frenzy * 9)) * (1.1 + frenzy);
+  circle(-9.5, -6.2 + pinch * 0.2, 4.1, "#ff7a2a");
+  circle(-12.4, -7.4 + pinch * 0.35, 2.4, "#ff9a48");
+  circle(-9.2, 5.4 - pinch * 0.15, 3.8, "#ff7a2a");
+  circle(-12.0, 6.6 - pinch * 0.3, 2.2, "#ff9a48");
+
+  // legs
+  for (let i = 0; i < 3; i++) {
+    const phase = t * (7 + frenzy * 16) + i * 1.05;
+    const kick = Math.sin(phase) * (2.4 + frenzy * 2);
+    const lx = -1 + i * 5.2;
+    circle(lx, 7.4, 1.35, "#e86a20");
+    circle(lx + kick * 0.55, 10.4 + Math.abs(kick) * 0.12, 1.25, "#ff8a3a");
   }
 
-  // eyes
-  dot(x + s * (-2.2), y - 3.2, 1.15, 1);
+  // eyes — big and shiny
+  circle(-0.6, -3.4, 3.35, "#fffaf4");
+  circle(6.2, -3.2, 3.35, "#fffaf4");
+  const look = s * 0.55;
+  circle(-0.6 + look, -3.2, 1.55, "#2a1208");
+  circle(6.2 + look, -3.0, 1.55, "#2a1208");
+  circle(-1.3 + look, -4.0, 0.7, "#fff");
+  circle(5.5 + look, -3.8, 0.7, "#fff");
+
+  // tiny smile
   ctx.beginPath();
-  ctx.fillStyle = "#1a0a00";
-  ctx.arc(x + s * (-2.4), y - 3.2, 0.45, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.strokeStyle = "#c45a20";
+  ctx.lineWidth = 1.1;
+  ctx.lineCap = "round";
+  ctx.arc(2.8, 1.1, 2.2, 0.15, Math.PI - 0.15);
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 function tick(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   const spd = speedFromSpend(spend10);
-  const frenzy = frenzyFromSpend(spend10);
+  const frenzy = heat(spend10);
   x += dir * spd * dt;
-  const minX = 14;
-  const maxX = canvas.width - 28;
+  const minX = 16;
+  const maxX = canvas.width - 22;
   if (x > maxX) {
     x = maxX;
     dir = -1;
@@ -120,7 +134,7 @@ function apply(q) {
   chip.title = [
     `지난 10분 ${fmtUsd(q.spend_10m)}`,
     `지난 1시간 ${fmtUsd(q.spend_1h)}`,
-    "가재는 최근 10분 소비가 클수록 빨리 기어다님",
+    "가재 최고속은 10분에 $100부터",
     "Click refresh · Right-click stats",
   ].join("\n");
 }
