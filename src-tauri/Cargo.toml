@@ -1,0 +1,31 @@
+[package]
+name = "quota-bar"
+version = "0.1.0"
+description = "Windows taskbar quota bar for Anthropic-compatible Claude proxies"
+authors = ["Quota Bar contributors"]
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "quota_bar_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["macros", "time", "sync"] }
+directories = "6"
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }

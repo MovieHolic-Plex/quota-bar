@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quota Bar</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="chip" class="chip" title="Click to refresh · Right-click for menu">
+      <div class="seg" data-window="five">
+        <span class="lbl">5h</span>
+        <div class="track"><div class="fill" id="fill5"></div></div>
+        <span class="pct" id="pct5">--</span>
+      </div>
+      <div class="div"></div>
+      <div class="seg" data-window="seven">
+        <span class="lbl">7d</span>
+        <div class="track"><div class="fill" id="fill7"></div></div>
+        <span class="pct" id="pct7">--</span>
+      </div>
+      <span class="meta" id="meta">no key</span>
+    </div>
+    <script src="main.js"></script>
+  </body>
+</html>

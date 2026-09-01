@@ -1,0 +1,65 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Quota Bar",
+  "version": "0.1.0",
+  "identifier": "dev.quotabar.desktop",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "bar",
+        "title": "Quota Bar",
+        "url": "index.html",
+        "width": 420,
+        "height": 48,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "focus": false,
+        "visible": false,
+        "contentProtected": false
+      },
+      {
+        "label": "settings",
+        "title": "Quota Bar Settings",
+        "url": "settings.html",
+        "width": 420,
+        "height": 460,
+        "resizable": false,
+        "visible": false,
+        "skipTaskbar": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+    },
+    "trayIcon": {
+      "iconPath": "icons/32x32.png",
+      "tooltip": "Quota Bar"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  }
+}
