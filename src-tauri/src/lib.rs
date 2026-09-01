@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
 use tokio::sync::Notify;
 
 struct AppState {
@@ -151,16 +151,19 @@ pub fn run() {
             open_settings
         ])
         .setup(|app| {
+            let show_item = MenuItem::with_id(app, "show", "Show bar", true, None::<&str>)?;
             let refresh_item = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&refresh_item, &settings_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&show_item, &refresh_item, &settings_item, &quit_item])?;
 
             let mut tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .tooltip("Quota Bar")
                 .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => redock(app),
                     "refresh" => {
+                        redock(app);
                         if let Some(state) = app.try_state::<AppState>() {
                             state.refresh.notify_one();
                         }
@@ -211,6 +214,23 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Quota Bar");
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                if window.label() == "settings" {
+                    let _ = window.hide();
+                } else if window.label() == "bar" {
+                    let _ = window.show();
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building Quota Bar")
+        .run(|_app, event| {
+            if let RunEvent::ExitRequested { api, code, .. } = event {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
+        });
 }

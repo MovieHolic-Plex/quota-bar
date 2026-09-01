@@ -193,6 +193,10 @@ pub fn dock_bar(window: &WebviewWindow, bar_width: u32) -> Result<(), String> {
     {
         let mut last = LAST_PLACE.lock().unwrap();
         if !first && *last == Some(place) {
+            keep_above(window);
+            if !window.is_visible().unwrap_or(true) {
+                let _ = window.show();
+            }
             return Ok(());
         }
         *last = Some(place);
@@ -247,7 +251,7 @@ fn restore_toplevel(_window: &WebviewWindow) {}
 fn pin_at(window: &WebviewWindow, place: BarPlacement, topmost: bool) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, HWND_TOP, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW,
+        SetWindowPos, HWND_TOP, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOZORDER,
     };
 
     let Ok(raw) = window.hwnd() else {
@@ -256,7 +260,7 @@ fn pin_at(window: &WebviewWindow, place: BarPlacement, topmost: bool) {
     unsafe {
         let hwnd = HWND(raw.0 as *mut _);
         let flags = if topmost {
-            SWP_NOACTIVATE | SWP_SHOWWINDOW
+            SWP_NOACTIVATE
         } else {
             SWP_NOACTIVATE | SWP_NOZORDER
         };
@@ -267,3 +271,30 @@ fn pin_at(window: &WebviewWindow, place: BarPlacement, topmost: bool) {
 
 #[cfg(not(windows))]
 fn pin_at(_window: &WebviewWindow, _place: BarPlacement, _topmost: bool) {}
+
+#[cfg(windows)]
+fn keep_above(window: &WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+
+    let Ok(raw) = window.hwnd() else {
+        return;
+    };
+    unsafe {
+        let hwnd = HWND(raw.0 as *mut _);
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn keep_above(_window: &WebviewWindow) {}
