@@ -190,7 +190,7 @@ pub fn run() {
                         .max(30);
                     let due = last.elapsed() >= Duration::from_secs(interval);
                     let notified = if let Some(state) = handle.try_state::<AppState>() {
-                        let timeout = tokio::time::sleep(Duration::from_millis(800));
+                        let timeout = tokio::time::sleep(Duration::from_millis(250));
                         tokio::select! {
                             _ = state.refresh.notified() => true,
                             _ = timeout => false,
