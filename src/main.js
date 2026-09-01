@@ -1,64 +1,126 @@
-const cacheEl = document.getElementById("cache");
-const gainEl = document.getElementById("gain");
-const spark = document.getElementById("spark");
+const m10El = document.getElementById("m10");
+const h1El = document.getElementById("h1");
 const chip = document.getElementById("chip");
+const canvas = document.getElementById("bug");
+const ctx = canvas.getContext("2d");
+
+let spend10 = 0;
+let x = 18;
+let dir = 1;
+let last = performance.now();
 
 function fmtUsd(n) {
   if (n == null || Number.isNaN(n)) return "--";
-  const sign = n < 0 ? "-" : "";
   const v = Math.abs(n);
-  if (v >= 100000) return `${sign}$${(v / 1000).toFixed(0)}k`;
-  if (v >= 10000) return `${sign}$${(v / 1000).toFixed(1)}k`;
-  if (v >= 1000) return `${sign}$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-  return `${sign}$${v.toFixed(2)}`;
+  if (v >= 1000) return `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  if (v >= 10) return `$${v.toFixed(2)}`;
+  return `$${v.toFixed(3)}`;
 }
 
-function fmtB(n) {
-  if (n == null || Number.isNaN(n)) return "--";
-  const b = n / 1e9;
-  if (Math.abs(b) >= 1) return `${b.toFixed(2)}B`;
-  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-  return String(Math.round(n));
+function speedFromSpend(usd10) {
+  const v = Math.max(0, usd10 || 0);
+  return 14 + Math.min(110, v * 18);
 }
 
-function paintSpark(minutes) {
-  spark.innerHTML = "";
-  const rows = minutes || [];
-  const max = Math.max(0.0001, ...rows.map((r) => r.cost_usd || 0));
-  rows.forEach((r) => {
-    const b = document.createElement("b");
-    const h = Math.max(1, Math.round(((r.cost_usd || 0) / max) * 32));
-    b.style.height = `${h}px`;
-    if (!r.cost_usd) b.classList.add("dim");
-    const t = new Date((r.start_ts || 0) * 1000);
-    const hh = String(t.getHours()).padStart(2, "0");
-    const mm = String(t.getMinutes()).padStart(2, "0");
-    b.title = `${hh}:${mm}  ${fmtUsd(r.cost_usd)}  ${fmtB(r.tokens)} tok`;
-    spark.appendChild(b);
-  });
+function frenzyFromSpend(usd10) {
+  return Math.min(1, Math.max(0, usd10 || 0) / 8);
+}
+
+function dot(px, py, r, a) {
+  ctx.beginPath();
+  ctx.fillStyle = `rgba(255, ${Math.round(90 + a * 40)}, 20, ${0.75 + a * 0.25})`;
+  ctx.arc(px, py, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCrawfish(t, frenzy) {
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const y = h * 0.58;
+  const s = dir;
+  const wiggle = Math.sin(t * (8 + frenzy * 18));
+  const bob = Math.sin(t * (5 + frenzy * 10)) * (1 + frenzy);
+
+  const body = [
+    [0, 0, 2.4],
+    [4, 0.4, 2.6],
+    [8, 0.2, 2.7],
+    [12, 0, 2.4],
+    [16, -0.3, 2.1],
+    [20, -0.6, 1.7],
+  ];
+  for (const [bx, by, r] of body) {
+    dot(x + s * bx, y + by + bob * 0.3, r, 0.7);
+  }
+
+  // tail fan
+  for (let i = -2; i <= 2; i++) {
+    const ang = i * 0.35 + wiggle * 0.12;
+    dot(x + s * (24 + Math.cos(ang) * 5), y - 0.8 + Math.sin(ang) * 5 + bob, 1.3, 0.45);
+  }
+
+  // claws
+  const pinch = Math.sin(t * (6 + frenzy * 14)) * (2 + frenzy * 2);
+  dot(x + s * (-7), y - 5 + pinch * 0.15, 2.3, 1);
+  dot(x + s * (-11), y - 7 + pinch * 0.3, 1.7, 0.9);
+  dot(x + s * (-6), y + 3 - pinch * 0.1, 2.1, 1);
+  dot(x + s * (-10), y + 6 - pinch * 0.25, 1.6, 0.9);
+
+  // legs 뽈뽈뽈
+  for (let i = 0; i < 4; i++) {
+    const phase = t * (10 + frenzy * 22) + i * 0.9;
+    const kick = Math.sin(phase) * (3.2 + frenzy * 2.4);
+    const lx = x + s * (3 + i * 4.2);
+    dot(lx, y + 4.8 + Math.abs(kick) * 0.15, 1.15, 0.55);
+    dot(lx + s * kick * 0.35, y + 8.2 + kick * 0.2, 1.05, 0.4);
+  }
+
+  // eyes
+  dot(x + s * (-2.2), y - 3.2, 1.15, 1);
+  ctx.beginPath();
+  ctx.fillStyle = "#1a0a00";
+  ctx.arc(x + s * (-2.4), y - 3.2, 0.45, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function tick(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  const spd = speedFromSpend(spend10);
+  const frenzy = frenzyFromSpend(spend10);
+  x += dir * spd * dt;
+  const minX = 14;
+  const maxX = canvas.width - 28;
+  if (x > maxX) {
+    x = maxX;
+    dir = -1;
+  } else if (x < minX) {
+    x = minX;
+    dir = 1;
+  }
+  drawCrawfish(now / 1000, frenzy);
+  requestAnimationFrame(tick);
 }
 
 function apply(q) {
   chip.classList.remove("setup");
   if (!q) return;
   if (q.error) {
-    cacheEl.textContent = q.error;
-    gainEl.textContent = "";
-    spark.innerHTML = "";
+    m10El.textContent = q.error;
+    h1El.textContent = "";
     if (q.error === "no api key") chip.classList.add("setup");
     chip.title = q.error;
+    spend10 = 0;
     return;
   }
-  const pct = q.cache_pct != null ? q.cache_pct : 0;
-  cacheEl.textContent = `${pct.toFixed(1)}%`;
-  const sav = q.savings_usd || 0;
-  gainEl.textContent = `${sav >= 0 ? "+" : "-"}${fmtUsd(Math.abs(sav))}`;
-  paintSpark(q.minutes || []);
+  spend10 = q.spend_10m || 0;
+  m10El.textContent = fmtUsd(q.spend_10m);
+  h1El.textContent = fmtUsd(q.spend_1h);
   chip.title = [
-    `cache ${pct.toFixed(1)}%  (${fmtB(q.cached_input_tokens)} / ${fmtB(q.total_tokens)})`,
-    `API ${fmtUsd(q.total_cost_usd)} − Pro ${fmtUsd(q.pro_usd)} = ${fmtUsd(q.savings_usd)}`,
-    `${Number(q.request_count || 0).toLocaleString()} requests · 오른쪽은 1분 사용량`,
+    `지난 10분 ${fmtUsd(q.spend_10m)}`,
+    `지난 1시간 ${fmtUsd(q.spend_1h)}`,
+    "가재는 최근 10분 소비가 클수록 빨리 기어다님",
     "Click refresh · Right-click stats",
   ].join("\n");
 }
@@ -66,6 +128,7 @@ function apply(q) {
 window.addEventListener("DOMContentLoaded", async () => {
   const { invoke } = window.__TAURI__.core;
   const { listen } = window.__TAURI__.event;
+  requestAnimationFrame(tick);
   await listen("quota-update", (ev) => apply(ev.payload));
   chip.addEventListener("click", () => invoke("refresh_now").catch(() => {}));
   chip.addEventListener("contextmenu", (e) => {
@@ -75,6 +138,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   try {
     apply(await invoke("current_quota"));
   } catch {
-    cacheEl.textContent = "starting…";
+    m10El.textContent = "starting…";
   }
 });

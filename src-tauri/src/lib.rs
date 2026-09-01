@@ -45,6 +45,8 @@ struct BarView {
     #[serde(flatten)]
     snap: QuotaSnapshot,
     minutes: Vec<BucketRow>,
+    spend_10m: f64,
+    spend_1h: f64,
 }
 
 fn apply_pro(snap: &mut QuotaSnapshot, pro_usd: f64) {
@@ -59,8 +61,15 @@ fn apply_pro(snap: &mut QuotaSnapshot, pro_usd: f64) {
 }
 
 fn bar_view(state: &AppState, snap: QuotaSnapshot) -> BarView {
-    let minutes = db::minute_series(&state.db.lock().unwrap(), 30).unwrap_or_default();
-    BarView { snap, minutes }
+    let db = state.db.lock().unwrap();
+    let minutes = db::minute_series(&db, 30).unwrap_or_default();
+    let (spend_10m, spend_1h) = db::recent_spend(&db).unwrap_or((0.0, 0.0));
+    BarView {
+        snap,
+        minutes,
+        spend_10m,
+        spend_1h,
+    }
 }
 
 fn emit_quota(app: &AppHandle, view: &BarView) {

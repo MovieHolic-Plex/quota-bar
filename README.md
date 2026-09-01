@@ -8,9 +8,9 @@ It sits on the taskbar next to the clock cluster and shows **cumulative usage fr
 
 | Field | Source |
 | --- | --- |
-| **cache** | `cached_input_tokens / total_tokens` |
-| **이득** | `total_cost_usd − Claude Pro ($20/mo, configurable)` |
-| **spark** | last 30 minutes of API-equivalent spend, 1-minute buckets |
+| **orange crayfish** | crawls faster when the last 10 minutes cost more |
+| **10m** | API-equivalent dollars in the last 10 minutes |
+| **1h** | API-equivalent dollars in the last hour |
 
 Click the bar to refresh. Right-click opens **Stats**.
 
