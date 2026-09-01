@@ -141,7 +141,7 @@ function apply(q) {
     `10m ${fmtUsd(q.spend_10m)} · 1h ${fmtUsd(q.spend_1h)}`,
     `1d ${fmtUsd(q.spend_1d)} · 3d ${fmtUsd(q.spend_3d)}`,
     "가재 최고속은 10분에 $100부터",
-    "Click refresh · Right-click stats",
+    "드래그해서 이동 · 더블클릭 위치 리셋 · 우클릭 통계",
   ].join("\n");
 }
 
@@ -150,7 +150,46 @@ window.addEventListener("DOMContentLoaded", async () => {
   const { listen } = window.__TAURI__.event;
   requestAnimationFrame(tick);
   await listen("quota-update", (ev) => apply(ev.payload));
-  chip.addEventListener("click", () => invoke("refresh_now").catch(() => {}));
+
+  let dragging = false;
+  let moved = false;
+  let lastX = 0;
+  const THRESH = 4;
+
+  chip.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    dragging = true;
+    moved = false;
+    lastX = e.clientX;
+    chip.setPointerCapture(e.pointerId);
+    invoke("begin_bar_drag").catch(() => {});
+  });
+  chip.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dxCss = e.clientX - lastX;
+    if (!moved && Math.abs(dxCss) < THRESH) return;
+    moved = true;
+    document.body.classList.add("dragging");
+    const dx = Math.round(dxCss * (window.devicePixelRatio || 1));
+    lastX = e.clientX;
+    if (dx !== 0) invoke("nudge_bar", { dx }).catch(() => {});
+  });
+  function endDrag(e) {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("dragging");
+    try {
+      chip.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    invoke("end_bar_drag").catch(() => {});
+    if (!moved) invoke("refresh_now").catch(() => {});
+  }
+  chip.addEventListener("pointerup", endDrag);
+  chip.addEventListener("pointercancel", endDrag);
+  chip.addEventListener("dblclick", (e) => {
+    e.preventDefault();
+    invoke("reset_bar_position").catch(() => {});
+  });
   chip.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     invoke("open_stats").catch(() => {});

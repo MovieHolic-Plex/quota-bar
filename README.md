@@ -14,7 +14,7 @@ It sits on the taskbar next to the clock cluster and shows **cumulative usage fr
 | **1d** | last 24 hours |
 | **3d** | last 3 days |
 
-Click the bar to refresh. Right-click opens **Stats**.
+Drag the bar along the taskbar to park it. Double-click (or tray **Reset position**) snaps it back next to the clock cluster. Click (without dragging) refreshes. Right-click opens **Stats**.
 
 ## Logging and stats
 

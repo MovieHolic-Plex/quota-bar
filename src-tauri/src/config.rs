@@ -21,6 +21,9 @@ pub struct AppConfig {
     /// Claude Pro monthly USD. Savings = API-equivalent cost minus this.
     #[serde(default = "default_pro_usd")]
     pub pro_usd: f64,
+    /// Offset from the taskbar's left/top edge. None = auto (left of tray cluster).
+    #[serde(default)]
+    pub bar_offset_x: Option<i32>,
 }
 
 impl Default for AppConfig {
@@ -32,6 +35,7 @@ impl Default for AppConfig {
             bar_width: default_bar_width(),
             paid_usd: 0.0,
             pro_usd: default_pro_usd(),
+            bar_offset_x: None,
         }
     }
 }

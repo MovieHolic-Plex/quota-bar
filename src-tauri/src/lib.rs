@@ -118,12 +118,18 @@ async fn poll_once(app: &AppHandle, state: &AppState) -> QuotaSnapshot {
 }
 
 fn redock(app: &AppHandle) {
-    let width = app
+    if taskbar::is_dragging() {
+        return;
+    }
+    let (width, offset) = app
         .try_state::<AppState>()
-        .map(|s| s.config.lock().unwrap().bar_width)
-        .unwrap_or(420);
+        .map(|s| {
+            let cfg = s.config.lock().unwrap();
+            (cfg.bar_width, cfg.bar_offset_x)
+        })
+        .unwrap_or((420, None));
     if let Some(bar) = app.get_webview_window("bar") {
-        let _ = taskbar::dock_bar(&bar, width);
+        let _ = taskbar::dock_bar(&bar, width, offset);
     }
 }
 
@@ -164,6 +170,45 @@ fn save_settings(state: State<AppState>, settings: SettingsPatch) -> Result<(), 
 #[tauri::command]
 fn refresh_now(state: State<AppState>) {
     state.refresh.notify_one();
+}
+
+#[tauri::command]
+fn begin_bar_drag() {
+    taskbar::set_dragging(true);
+}
+
+#[tauri::command]
+fn nudge_bar(app: AppHandle, state: State<AppState>, dx: i32) -> Result<(), String> {
+    taskbar::set_dragging(true);
+    let (width, next) = {
+        let mut cfg = state.config.lock().unwrap();
+        let next = taskbar::nudge_offset(cfg.bar_offset_x, dx, cfg.bar_width);
+        cfg.bar_offset_x = next;
+        (cfg.bar_width, next)
+    };
+    if let Some(bar) = app.get_webview_window("bar") {
+        let _ = taskbar::dock_bar(&bar, width, next);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn end_bar_drag(state: State<AppState>) -> Result<(), String> {
+    taskbar::set_dragging(false);
+    let cfg = state.config.lock().unwrap().clone();
+    save_config(&cfg)
+}
+
+#[tauri::command]
+fn reset_bar_position(app: AppHandle, state: State<AppState>) -> Result<(), String> {
+    taskbar::set_dragging(false);
+    {
+        let mut cfg = state.config.lock().unwrap();
+        cfg.bar_offset_x = None;
+        save_config(&cfg)?;
+    }
+    redock(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -208,6 +253,10 @@ pub fn run() {
             get_settings,
             save_settings,
             refresh_now,
+            begin_bar_drag,
+            nudge_bar,
+            end_bar_drag,
+            reset_bar_position,
             open_settings,
             open_stats,
             get_stats
@@ -216,11 +265,20 @@ pub fn run() {
             let show_item = MenuItem::with_id(app, "show", "Show bar", true, None::<&str>)?;
             let stats_item = MenuItem::with_id(app, "stats", "Stats", true, None::<&str>)?;
             let refresh_item = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
+            let reset_item =
+                MenuItem::with_id(app, "reset-pos", "Reset position", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,
-                &[&show_item, &stats_item, &refresh_item, &settings_item, &quit_item],
+                &[
+                    &show_item,
+                    &stats_item,
+                    &refresh_item,
+                    &reset_item,
+                    &settings_item,
+                    &quit_item,
+                ],
             )?;
 
             let mut tray = TrayIconBuilder::new()
@@ -235,6 +293,11 @@ pub fn run() {
                         redock(app);
                         if let Some(state) = app.try_state::<AppState>() {
                             state.refresh.notify_one();
+                        }
+                    }
+                    "reset-pos" => {
+                        if let Some(state) = app.try_state::<AppState>() {
+                            let _ = reset_bar_position(app.clone(), state);
                         }
                     }
                     "settings" => {

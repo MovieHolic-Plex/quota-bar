@@ -15,8 +15,12 @@ body {
   background: var(--bg);
   font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   user-select: none;
-  cursor: default;
+  cursor: grab;
   color: var(--text);
+}
+
+body.dragging {
+  cursor: grabbing;
 }
 
 .bar {

@@ -20,7 +20,16 @@ struct BarPlacement {
 }
 
 static FIRST_DOCK: AtomicBool = AtomicBool::new(true);
+static DRAGGING: AtomicBool = AtomicBool::new(false);
 static LAST_PLACE: Mutex<Option<BarPlacement>> = Mutex::new(None);
+
+pub fn set_dragging(on: bool) {
+    DRAGGING.store(on, Ordering::SeqCst);
+}
+
+pub fn is_dragging() -> bool {
+    DRAGGING.load(Ordering::SeqCst)
+}
 
 #[cfg(windows)]
 pub fn taskbar_geometry() -> Option<TaskbarGeom> {
@@ -50,18 +59,28 @@ pub fn taskbar_geometry() -> Option<TaskbarGeom> {
     None
 }
 
-fn bar_rect(bar_width: u32, self_hwnd: isize) -> Option<BarPlacement> {
+fn bar_rect(bar_width: u32, self_hwnd: isize, offset: Option<i32>) -> Option<BarPlacement> {
     let tb = taskbar_geometry()?;
     let width = bar_width.min(tb.width.saturating_sub(16) as u32).max(300) as i32;
     let height = tb.height.max(40);
-    let gap = 8;
-    let right_edge = right_cluster_left(&tb, self_hwnd);
+    let max_off = (tb.width - width).max(0);
 
-    let (x, y) = match tb.edge {
-        1 => ((right_edge - gap - width).max(tb.x), tb.y),
-        0 => (tb.x, tb.y + 8),
-        2 => (tb.x, tb.y + 8),
-        _ => ((right_edge - gap - width).max(tb.x), tb.y),
+    let (x, y) = if let Some(off) = offset {
+        let off = off.clamp(0, max_off);
+        match tb.edge {
+            0 => (tb.x, tb.y + off),
+            2 => (tb.x, tb.y + off),
+            _ => (tb.x + off, tb.y),
+        }
+    } else {
+        let gap = 8;
+        let right_edge = right_cluster_left(&tb, self_hwnd);
+        match tb.edge {
+            1 => ((right_edge - gap - width).max(tb.x), tb.y),
+            0 => (tb.x, tb.y + 8),
+            2 => (tb.x, tb.y + 8),
+            _ => ((right_edge - gap - width).max(tb.x), tb.y),
+        }
     };
 
     Some(BarPlacement {
@@ -70,6 +89,24 @@ fn bar_rect(bar_width: u32, self_hwnd: isize) -> Option<BarPlacement> {
         w: width,
         h: height,
     })
+}
+
+pub fn nudge_offset(current: Option<i32>, dx: i32, bar_width: u32) -> Option<i32> {
+    let tb = taskbar_geometry()?;
+    let width = bar_width.min(tb.width.saturating_sub(16) as u32).max(300) as i32;
+    let max_off = (tb.width - width).max(0);
+    let base = current.unwrap_or_else(|| {
+        LAST_PLACE
+            .lock()
+            .ok()
+            .and_then(|p| *p)
+            .map(|pl| match tb.edge {
+                0 | 2 => pl.y - tb.y,
+                _ => pl.x - tb.x,
+            })
+            .unwrap_or(0)
+    });
+    Some((base + dx).clamp(0, max_off))
 }
 
 /// Left edge of the right-hand taskbar cluster (clock, tray, TrafficMonitor, …).
@@ -180,12 +217,16 @@ unsafe extern "system" fn occupancy_cb(
     BOOL(1)
 }
 
-pub fn dock_bar(window: &WebviewWindow, bar_width: u32) -> Result<(), String> {
+pub fn dock_bar(
+    window: &WebviewWindow,
+    bar_width: u32,
+    offset: Option<i32>,
+) -> Result<(), String> {
     let self_hwnd = window
         .hwnd()
         .map(|h| h.0 as isize)
         .unwrap_or(0);
-    let Some(place) = bar_rect(bar_width, self_hwnd) else {
+    let Some(place) = bar_rect(bar_width, self_hwnd, offset) else {
         return Ok(());
     };
 
