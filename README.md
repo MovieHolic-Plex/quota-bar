@@ -10,7 +10,9 @@ It sits on the taskbar next to the clock cluster and shows **cumulative usage fr
 | --- | --- |
 | **orange crayfish** | crawls faster when the last 10 minutes cost more |
 | **10m** | API-equivalent dollars in the last 10 minutes |
-| **1h** | API-equivalent dollars in the last hour |
+| **1h** | last hour |
+| **1d** | last 24 hours |
+| **3d** | last 3 days |
 
 Click the bar to refresh. Right-click opens **Stats**.
 

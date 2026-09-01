@@ -1,5 +1,7 @@
 const m10El = document.getElementById("m10");
 const h1El = document.getElementById("h1");
+const d1El = document.getElementById("d1");
+const d3El = document.getElementById("d3");
 const chip = document.getElementById("chip");
 const canvas = document.getElementById("bug");
 const ctx = canvas.getContext("2d");
@@ -123,6 +125,8 @@ function apply(q) {
   if (q.error) {
     m10El.textContent = q.error;
     h1El.textContent = "";
+    d1El.textContent = "";
+    d3El.textContent = "";
     if (q.error === "no api key") chip.classList.add("setup");
     chip.title = q.error;
     spend10 = 0;
@@ -131,9 +135,11 @@ function apply(q) {
   spend10 = q.spend_10m || 0;
   m10El.textContent = fmtUsd(q.spend_10m);
   h1El.textContent = fmtUsd(q.spend_1h);
+  d1El.textContent = fmtUsd(q.spend_1d);
+  d3El.textContent = fmtUsd(q.spend_3d);
   chip.title = [
-    `지난 10분 ${fmtUsd(q.spend_10m)}`,
-    `지난 1시간 ${fmtUsd(q.spend_1h)}`,
+    `10m ${fmtUsd(q.spend_10m)} · 1h ${fmtUsd(q.spend_1h)}`,
+    `1d ${fmtUsd(q.spend_1d)} · 3d ${fmtUsd(q.spend_3d)}`,
     "가재 최고속은 10분에 $100부터",
     "Click refresh · Right-click stats",
   ].join("\n");

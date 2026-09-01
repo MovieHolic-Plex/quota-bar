@@ -49,7 +49,7 @@ fn default_model() -> String {
 }
 
 fn default_bar_width() -> u32 {
-    460
+    520
 }
 
 fn default_pro_usd() -> f64 {

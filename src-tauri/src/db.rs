@@ -274,7 +274,8 @@ pub fn load_stats(conn: &Connection, paid_usd: f64) -> Result<UsageStats, String
         band(conn, "10m", 600, &latest)?,
         band(conn, "1h", 3600, &latest)?,
         band(conn, "5h", 5 * 3600, &latest)?,
-        band(conn, "24h", 24 * 3600, &latest)?,
+        band(conn, "1d", 24 * 3600, &latest)?,
+        band(conn, "3d", 3 * 24 * 3600, &latest)?,
         band(conn, "7d", 7 * 24 * 3600, &latest)?,
         band(conn, "30d", 30 * 24 * 3600, &latest)?,
         band(conn, "all", 0, &latest)?,
@@ -291,13 +292,15 @@ pub fn load_stats(conn: &Connection, paid_usd: f64) -> Result<UsageStats, String
     })
 }
 
-pub fn recent_spend(conn: &Connection) -> Result<(f64, f64), String> {
+pub fn recent_spend(conn: &Connection) -> Result<(f64, f64, f64, f64), String> {
     let Some(latest) = latest_row(conn)? else {
-        return Ok((0.0, 0.0));
+        return Ok((0.0, 0.0, 0.0, 0.0));
     };
     let ten = band(conn, "10m", 600, &latest)?;
     let hour = band(conn, "1h", 3600, &latest)?;
-    Ok((ten.cost_usd, hour.cost_usd))
+    let day = band(conn, "1d", 24 * 3600, &latest)?;
+    let three = band(conn, "3d", 3 * 24 * 3600, &latest)?;
+    Ok((ten.cost_usd, hour.cost_usd, day.cost_usd, three.cost_usd))
 }
 
 pub fn minute_series(conn: &Connection, minutes: i64) -> Result<Vec<BucketRow>, String> {
