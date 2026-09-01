@@ -15,6 +15,9 @@ pub struct AppConfig {
     pub probe_model: String,
     #[serde(default = "default_bar_width")]
     pub bar_width: u32,
+    /// What you actually paid for the proxy. Savings = API-equivalent cost minus this.
+    #[serde(default)]
+    pub paid_usd: f64,
 }
 
 impl Default for AppConfig {
@@ -24,6 +27,7 @@ impl Default for AppConfig {
             poll_interval_secs: default_interval(),
             probe_model: default_model(),
             bar_width: default_bar_width(),
+            paid_usd: 0.0,
         }
     }
 }
@@ -33,7 +37,7 @@ fn default_base_url() -> String {
 }
 
 fn default_interval() -> u64 {
-    180
+    60
 }
 
 fn default_model() -> String {

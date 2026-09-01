@@ -1,111 +1,69 @@
-const fill5 = document.getElementById("fill5");
-const fill7 = document.getElementById("fill7");
-const pct5 = document.getElementById("pct5");
-const pct7 = document.getElementById("pct7");
-const when5 = document.getElementById("when5");
-const when7 = document.getElementById("when7");
+const tok = document.getElementById("tok");
+const cache = document.getElementById("cache");
+const api = document.getElementById("api");
+const gain = document.getElementById("gain");
 const chip = document.getElementById("chip");
 
-let latest = null;
-
-function level(remaining) {
-  if (remaining == null || Number.isNaN(remaining)) return "";
-  if (remaining < 0.15) return "bad";
-  if (remaining < 0.4) return "warn";
-  return "";
+function fmtB(n) {
+  if (n == null || Number.isNaN(n)) return "--";
+  const b = n / 1e9;
+  if (b >= 100) return `${b.toFixed(1)}B`;
+  if (b >= 10) return `${b.toFixed(2)}B`;
+  if (b >= 1) return `${b.toFixed(3)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return String(Math.round(n));
 }
 
-function fmtPct(remaining) {
-  if (remaining == null) return "--";
-  return `${Math.round(remaining * 100)}%`;
-}
-
-function fmtRemain(unix) {
-  if (!unix) return "";
-  const ms = unix * 1000 - Date.now();
-  if (ms <= 0) return "now";
-  const m = Math.max(0, Math.round(ms / 60000));
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  const rm = m % 60;
-  if (h < 48) return rm ? `${h}h ${rm}m` : `${h}h`;
-  const d = Math.floor(h / 24);
-  const rh = h % 24;
-  return rh ? `${d}d ${rh}h` : `${d}d`;
-}
-
-function fmtClock(unix) {
-  if (!unix) return "";
-  const d = new Date(unix * 1000);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-function fmtWhen(unix, withClock) {
-  if (!unix) return "--";
-  const remain = fmtRemain(unix);
-  if (!withClock) return remain;
-  return `${remain} · ${fmtClock(unix)}`;
-}
-
-function paintTimes() {
-  if (!latest || latest.error) return;
-  when5.textContent = fmtWhen(latest.reset_5h, true);
-  when7.textContent = latest.reset_7d ? fmtRemain(latest.reset_7d) : "";
-  const tip = latest.reset_5h
-    ? `5h ${fmtPct(latest.remaining_5h)} left · resets ${fmtClock(latest.reset_5h)} (${fmtRemain(latest.reset_5h)})`
-    : "Quota Bar";
-  chip.title = `${tip}\nClick to refresh · Right-click for settings`;
+function fmtUsd(n) {
+  if (n == null || Number.isNaN(n)) return "--";
+  const sign = n < 0 ? "-" : "";
+  const v = Math.abs(n);
+  if (v >= 100000) return `${sign}$${(v / 1000).toFixed(0)}k`;
+  if (v >= 10000) return `${sign}$${(v / 1000).toFixed(1)}k`;
+  if (v >= 1000) return `${sign}$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  return `${sign}$${v.toFixed(2)}`;
 }
 
 function apply(q) {
-  latest = q;
-  chip.classList.remove("pulse", "setup");
+  chip.classList.remove("setup");
   if (!q) return;
-
   if (q.error) {
-    when5.textContent = q.error;
-    when7.textContent = "";
+    tok.textContent = q.error;
+    cache.textContent = "";
+    api.textContent = "";
+    gain.textContent = "";
     if (q.error === "no api key") chip.classList.add("setup");
     chip.title = q.error;
     return;
   }
-
-  const r5 = q.remaining_5h;
-  const r7 = q.remaining_7d;
-  fill5.style.width = r5 == null ? "0%" : `${Math.max(0, Math.min(1, r5)) * 100}%`;
-  fill7.style.width = r7 == null ? "0%" : `${Math.max(0, Math.min(1, r7)) * 100}%`;
-  fill5.className = `fill ${level(r5)}`.trim();
-  fill7.className = `fill ${level(r7)}`.trim();
-  pct5.textContent = fmtPct(r5);
-  pct7.textContent = fmtPct(r7);
-  paintTimes();
-
-  if (q.status_5h && /reject|exceed|limit/i.test(q.status_5h)) {
-    chip.classList.add("pulse");
-    when5.textContent = `exhausted · ${fmtClock(q.reset_5h)}`;
-  }
+  tok.textContent = fmtB(q.total_tokens);
+  cache.textContent = fmtB(q.cached_input_tokens);
+  api.textContent = fmtUsd(q.total_cost_usd);
+  const sav = q.savings_usd || 0;
+  gain.textContent = `${sav >= 0 ? "+" : "-"}${fmtUsd(Math.abs(sav))}`;
+  const cachePct =
+    q.total_tokens > 0 ? ((q.cached_input_tokens / q.total_tokens) * 100).toFixed(1) : "0";
+  chip.title = [
+    `tokens ${fmtB(q.total_tokens)}  cache ${fmtB(q.cached_input_tokens)} (${cachePct}%)`,
+    `API equivalent ${fmtUsd(q.total_cost_usd)}  paid ${fmtUsd(q.paid_usd)}  savings ${fmtUsd(q.savings_usd)}`,
+    `${q.request_count} requests`,
+    "Click refresh · Right-click stats",
+  ].join("\n");
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
   const { invoke } = window.__TAURI__.core;
   const { listen } = window.__TAURI__.event;
-
   await listen("quota-update", (ev) => apply(ev.payload));
-  setInterval(paintTimes, 1000);
-
-  chip.addEventListener("click", () => {
-    invoke("refresh_now").catch(() => {});
-  });
-
+  chip.addEventListener("click", () => invoke("refresh_now").catch(() => {}));
   chip.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    invoke("open_settings").catch(() => {});
+    invoke("open_stats").catch(() => {});
   });
-
   try {
-    const current = await invoke("current_quota");
-    apply(current);
+    apply(await invoke("current_quota"));
   } catch {
-    when5.textContent = "starting…";
+    tok.textContent = "starting…";
   }
 });

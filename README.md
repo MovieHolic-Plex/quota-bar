@@ -1,32 +1,36 @@
 # Quota Bar
 
-A tiny Windows taskbar overlay that shows remaining **5-hour** and **7-day** rate-limit quota for Anthropic-compatible Claude proxies (for example [claude-lb](https://claude.nekos.me)).
+A tiny Windows taskbar overlay for Anthropic-compatible Claude proxies (for example [claude-lb](https://claude.nekos.me)).
 
-It sits **on the Windows taskbar** as a compact bar — the same strip as Start / the clock — not a normal desktop window.
+It sits on the taskbar next to the clock cluster and shows **cumulative usage from `GET /v1/usage/self`**, not the 5-hour rate-limit window (that window hops between load-balanced accounts).
 
 ## What it shows
 
-| Segment | Meaning |
+| Field | Source |
 | --- | --- |
-| **5h** | Remaining unified 5-hour window |
-| **7d** | Remaining unified 7-day window |
+| **tok** | `total_tokens` in billions |
+| **cache** | `cached_input_tokens` in billions |
+| **API** | `total_cost_usd` — Anthropic list-price equivalent |
+| **이득** | `total_cost_usd − paid_usd` (set what you actually paid in Settings) |
 
-Color: green while healthy, amber under 40% remaining, red under 15%.
+Click the bar to refresh. Right-click opens **Stats**.
 
-Quota is read from Anthropic-style response headers:
+## Logging and stats
 
-- `anthropic-ratelimit-unified-5h-utilization`
-- `anthropic-ratelimit-unified-7d-utilization`
-- matching `*-reset` unix timestamps
+Every successful poll is appended to SQLite:
 
-`utilization` is **used** fraction. The bar displays **remaining** = `1 - utilization`.
+`%APPDATA%\quotabar\quota-bar\usage.db`
+
+Time-band tables (1h / 5h / 24h / 7d / 30d / all) and hourly/daily charts are **deltas between snapshots** of the cumulative counters. Leave it running; the history is what makes the stats useful.
+
+Tray menu: Show bar · Stats · Refresh · Settings · Quit.
 
 ## Privacy
 
-- Your API key is **not** stored in this repository.
-- On Windows the key is saved in **Credential Manager** (`dev.quotabar.desktop` / `api-key`).
-- Non-secret settings live in `%APPDATA%\quotabar\quota-bar\config.json`.
-- The key is never written to logs, events, or screenshots of config.
+- API keys are not in this repository.
+- On Windows the key is stored in **Credential Manager** (`dev.quotabar.desktop` / `api-key`).
+- Settings live in `%APPDATA%\quotabar\quota-bar\config.json`.
+- The key is never written to SQLite, logs, or UI events.
 
 ## Setup
 
@@ -34,7 +38,7 @@ Quota is read from Anthropic-style response headers:
 
 - [Rust](https://rustup.rs/) (MSVC toolchain)
 - [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with **Desktop development with C++**
-- WebView2 (already on current Windows 10/11)
+- WebView2
 - Node.js 18+
 
 ### 2. Run from source
@@ -46,36 +50,30 @@ npm install
 npm run dev
 ```
 
-Release installer:
-
 ```powershell
 npm run build
 ```
 
-The NSIS installer is written to `src-tauri/target/release/bundle/nsis/`.
+Installer: `src-tauri/target/release/bundle/nsis/`.
 
 ### 3. API key
 
-Right-click the bar (or the tray icon) → **Settings**.
-
-Or set user environment variables before the first launch:
+Tray → **Settings**, or user environment variables:
 
 ```text
 ANTHROPIC_BASE_URL=https://claude.nekos.me
 ANTHROPIC_API_KEY=sk-clb-...
 ```
 
-`ANTHROPIC_AUTH_TOKEN` is accepted as an alias for the key.
+Set **What you paid for this proxy** to compute net savings. Leave it `0` to treat the full API-equivalent cost as savings.
 
-## How polling works
+## Polling
 
-The proxy only reports live remaining quota on **`POST /v1/messages`** responses. A 1-token Haiku probe is used by default, every 3 minutes (configurable). Click the bar to refresh immediately.
-
-`GET /v1/models` does **not** return rate-limit headers, so it cannot be used as a free poll.
+`GET /v1/usage/self` every 60 seconds (configurable). No `POST /v1/messages` probes.
 
 ## Taskbar placement
 
-Windows 11's taskbar is a XAML island, so child windows parented to `Shell_TrayWnd` vanish. Quota Bar uses a top-level popup **flush on the taskbar, immediately left of the right-hand cluster** (clock, system tray, TrafficMonitor, and similar overlays) so it does not sit on top of them. The window is only moved when that cluster actually changes, which avoids flicker. The 5-hour row shows remaining percent plus **countdown and reset clock** (`3h 36m · 13:20`).
+Windows 11 draws the XAML taskbar over explorer child windows, so this stays a top-level popup flush on the taskbar, left of the clock / TrafficMonitor cluster. It only moves when that cluster changes.
 
 ## Config
 
@@ -84,9 +82,9 @@ Windows 11's taskbar is a XAML island, so child windows parented to `Shell_TrayW
 ```json
 {
   "base_url": "https://claude.nekos.me",
-  "poll_interval_secs": 180,
-  "probe_model": "claude-haiku-4-5-20251001",
-  "bar_width": 420
+  "poll_interval_secs": 60,
+  "bar_width": 420,
+  "paid_usd": 0
 }
 ```
 

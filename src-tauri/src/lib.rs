@@ -1,9 +1,12 @@
 mod config;
+mod db;
 mod quota;
 mod taskbar;
 
 use config::{has_api_key, key_preview, load_api_key, load_config, save_config, store_api_key, AppConfig};
-use quota::{fetch_quota, QuotaSnapshot};
+use db::UsageStats;
+use quota::{fetch_usage, QuotaSnapshot};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -15,6 +18,7 @@ use tokio::sync::Notify;
 struct AppState {
     config: Mutex<AppConfig>,
     quota: Mutex<QuotaSnapshot>,
+    db: Mutex<Connection>,
     refresh: Notify,
 }
 
@@ -22,7 +26,7 @@ struct AppState {
 struct SettingsPatch {
     base_url: String,
     poll_interval_secs: u64,
-    probe_model: String,
+    paid_usd: f64,
     api_key: Option<String>,
 }
 
@@ -30,10 +34,15 @@ struct SettingsPatch {
 struct SettingsView {
     base_url: String,
     poll_interval_secs: u64,
-    probe_model: String,
+    paid_usd: f64,
     bar_width: u32,
     has_key: bool,
     key_preview: Option<String>,
+}
+
+fn apply_paid(snap: &mut QuotaSnapshot, paid_usd: f64) {
+    snap.paid_usd = paid_usd;
+    snap.savings_usd = snap.total_cost_usd - paid_usd;
 }
 
 fn emit_quota(app: &AppHandle, snap: &QuotaSnapshot) {
@@ -41,9 +50,9 @@ fn emit_quota(app: &AppHandle, snap: &QuotaSnapshot) {
 }
 
 async fn poll_once(app: &AppHandle, state: &AppState) -> QuotaSnapshot {
-    let (base, model) = {
+    let (base, paid) = {
         let cfg = state.config.lock().unwrap();
-        (cfg.base_url.clone(), cfg.probe_model.clone())
+        (cfg.base_url.clone(), cfg.paid_usd)
     };
     let Some(key) = load_api_key() else {
         let snap = QuotaSnapshot {
@@ -54,8 +63,12 @@ async fn poll_once(app: &AppHandle, state: &AppState) -> QuotaSnapshot {
         emit_quota(app, &snap);
         return snap;
     };
-    match fetch_quota(&base, &key, &model).await {
-        Ok(snap) => {
+    match fetch_usage(&base, &key).await {
+        Ok(mut snap) => {
+            apply_paid(&mut snap, paid);
+            if let Err(err) = db::insert_snapshot(&state.db.lock().unwrap(), &snap) {
+                snap.error = Some(format!("db: {err}"));
+            }
             *state.quota.lock().unwrap() = snap.clone();
             emit_quota(app, &snap);
             snap
@@ -93,7 +106,7 @@ fn get_settings(state: State<AppState>) -> SettingsView {
     SettingsView {
         base_url: cfg.base_url,
         poll_interval_secs: cfg.poll_interval_secs,
-        probe_model: cfg.probe_model,
+        paid_usd: cfg.paid_usd,
         bar_width: cfg.bar_width,
         has_key: has_api_key(),
         key_preview: key_preview(),
@@ -109,10 +122,8 @@ fn save_settings(state: State<AppState>, settings: SettingsPatch) -> Result<(), 
     }
     let mut cfg = state.config.lock().unwrap();
     cfg.base_url = settings.base_url.trim_end_matches('/').to_string();
-    cfg.poll_interval_secs = settings.poll_interval_secs.max(30);
-    if !settings.probe_model.trim().is_empty() {
-        cfg.probe_model = settings.probe_model;
-    }
+    cfg.poll_interval_secs = settings.poll_interval_secs.max(15);
+    cfg.paid_usd = settings.paid_usd.max(0.0);
     save_config(&cfg)?;
     state.refresh.notify_one();
     Ok(())
@@ -132,8 +143,24 @@ fn open_settings(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn open_stats(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("stats") {
+        win.show().map_err(|e| e.to_string())?;
+        win.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_stats(state: State<AppState>) -> Result<UsageStats, String> {
+    let paid = state.config.lock().unwrap().paid_usd;
+    db::load_stats(&state.db.lock().unwrap(), paid)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let db = db::open().expect("open usage.db");
     tauri::Builder::default()
         .manage(AppState {
             config: Mutex::new(load_config()),
@@ -141,6 +168,7 @@ pub fn run() {
                 error: Some("starting…".into()),
                 ..Default::default()
             }),
+            db: Mutex::new(db),
             refresh: Notify::new(),
         })
         .invoke_handler(tauri::generate_handler![
@@ -148,20 +176,29 @@ pub fn run() {
             get_settings,
             save_settings,
             refresh_now,
-            open_settings
+            open_settings,
+            open_stats,
+            get_stats
         ])
         .setup(|app| {
             let show_item = MenuItem::with_id(app, "show", "Show bar", true, None::<&str>)?;
+            let stats_item = MenuItem::with_id(app, "stats", "Stats", true, None::<&str>)?;
             let refresh_item = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &refresh_item, &settings_item, &quit_item])?;
+            let menu = Menu::with_items(
+                app,
+                &[&show_item, &stats_item, &refresh_item, &settings_item, &quit_item],
+            )?;
 
             let mut tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .tooltip("Quota Bar")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => redock(app),
+                    "stats" => {
+                        let _ = open_stats(app.clone());
+                    }
                     "refresh" => {
                         redock(app);
                         if let Some(state) = app.try_state::<AppState>() {
@@ -188,8 +225,8 @@ pub fn run() {
                     let interval = handle
                         .try_state::<AppState>()
                         .map(|s| s.config.lock().unwrap().poll_interval_secs)
-                        .unwrap_or(180)
-                        .max(30);
+                        .unwrap_or(60)
+                        .max(15);
                     let due = last.elapsed() >= Duration::from_secs(interval);
                     let notified = if let Some(state) = handle.try_state::<AppState>() {
                         let timeout = tokio::time::sleep(Duration::from_millis(1500));
@@ -201,7 +238,6 @@ pub fn run() {
                         tokio::time::sleep(Duration::from_millis(1500)).await;
                         false
                     };
-                    // Only move the window if the taskbar/tray cluster actually changed.
                     redock(&handle);
                     if due || notified {
                         if let Some(state) = handle.try_state::<AppState>() {
@@ -217,10 +253,10 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                if window.label() == "settings" {
-                    let _ = window.hide();
-                } else if window.label() == "bar" {
+                if window.label() == "bar" {
                     let _ = window.show();
+                } else {
+                    let _ = window.hide();
                 }
             }
         })

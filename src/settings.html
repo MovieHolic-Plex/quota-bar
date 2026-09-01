@@ -68,7 +68,7 @@
         min-height: 1.2em;
       }
       .warn {
-        color: #f5c518;
+        color: #9a9a9a;
         font-size: 12px;
       }
     </style>
@@ -77,7 +77,7 @@
     <main>
       <div>
         <h1>Quota Bar</h1>
-        <p>Key is stored in Windows Credential Manager, not in the git repo.</p>
+        <p>Key stays in Windows Credential Manager. Usage is logged to SQLite.</p>
       </div>
       <label>
         Base URL
@@ -89,13 +89,13 @@
       </label>
       <label>
         Poll interval (seconds)
-        <input id="interval" type="number" min="30" step="30" />
+        <input id="interval" type="number" min="15" step="15" />
       </label>
       <label>
-        Probe model
-        <input id="model" />
+        What you paid for this proxy (USD)
+        <input id="paid" type="number" min="0" step="1" />
       </label>
-      <div class="warn">A 1-token request is sent on each poll. Keep the interval reasonable.</div>
+      <div class="warn">이득 = total_cost_usd (공식 API 환산) − 위에서 넣은 실제 지출. 0이면 환산액 전체가 이득입니다. GET /v1/usage/self만 호출합니다.</div>
       <div class="ok" id="status"></div>
       <div class="row">
         <button class="ghost" id="cancel">Close</button>
@@ -109,8 +109,8 @@
       async function load() {
         const cfg = await invoke("get_settings");
         document.getElementById("base").value = cfg.base_url || "";
-        document.getElementById("interval").value = cfg.poll_interval_secs || 180;
-        document.getElementById("model").value = cfg.probe_model || "";
+        document.getElementById("interval").value = cfg.poll_interval_secs || 60;
+        document.getElementById("paid").value = cfg.paid_usd || 0;
         document.getElementById("key").placeholder = cfg.has_key
           ? "saved in Credential Manager (leave blank to keep)"
           : "sk-clb-…";
@@ -124,7 +124,7 @@
             settings: {
               base_url: document.getElementById("base").value.trim(),
               poll_interval_secs: Number(document.getElementById("interval").value),
-              probe_model: document.getElementById("model").value.trim(),
+              paid_usd: Number(document.getElementById("paid").value),
               api_key: document.getElementById("key").value,
             },
           });

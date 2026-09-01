@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Quota Bar",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "identifier": "dev.quotabar.desktop",
   "build": {
     "frontendDist": "../src"
@@ -35,6 +35,17 @@
         "width": 420,
         "height": 460,
         "resizable": false,
+        "visible": false,
+        "skipTaskbar": false,
+        "center": true
+      },
+      {
+        "label": "stats",
+        "title": "Quota Bar Stats",
+        "url": "stats.html",
+        "width": 760,
+        "height": 640,
+        "resizable": true,
         "visible": false,
         "skipTaskbar": false,
         "center": true

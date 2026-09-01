@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Quota Bar Stats</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #141414;
+        color: #f2f2f2;
+        font: 13px/1.45 "Segoe UI Variable", "Segoe UI", sans-serif;
+      }
+      main {
+        padding: 16px 18px 24px;
+        display: grid;
+        gap: 16px;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0;
+      }
+      p.sub {
+        margin: 4px 0 0;
+        color: #9a9a9a;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+      }
+      .card {
+        background: #1e1e1e;
+        border: 1px solid #2c2c2c;
+        border-radius: 8px;
+        padding: 10px;
+      }
+      .card .k {
+        color: #9a9a9a;
+        font-size: 11px;
+      }
+      .card .v {
+        font-size: 18px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        margin-top: 4px;
+      }
+      .gain {
+        color: #3dd68c;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        text-align: right;
+        padding: 6px 8px;
+        border-bottom: 1px solid #2a2a2a;
+      }
+      th:first-child,
+      td:first-child {
+        text-align: left;
+      }
+      th {
+        color: #9a9a9a;
+        font-weight: 600;
+        font-size: 11px;
+      }
+      h2 {
+        font-size: 13px;
+        margin: 0 0 8px;
+        color: #cfcfcf;
+      }
+      .bars {
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+        height: 88px;
+        background: #1a1a1a;
+        border: 1px solid #2a2a2a;
+        border-radius: 8px;
+        padding: 8px 8px 4px;
+      }
+      .bars .col {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        min-width: 0;
+      }
+      .bars .stack {
+        height: 70px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+      }
+      .bars i {
+        display: block;
+        background: #3dd68c;
+        border-radius: 2px 2px 0 0;
+        min-height: 1px;
+      }
+      .bars .t {
+        font-size: 9px;
+        color: #777;
+        text-align: center;
+        margin-top: 2px;
+        overflow: hidden;
+      }
+      .meta {
+        color: #888;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div>
+        <h1>사용 통계</h1>
+        <p class="sub">GET /v1/usage/self 누적값을 1분마다 SQLite에 기록합니다. 시간대별 숫자는 스냅샷 차이입니다.</p>
+      </div>
+      <div class="cards" id="cards"></div>
+      <section>
+        <h2>시간대별</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>구간</th>
+              <th>요청</th>
+              <th>토큰</th>
+              <th>캐시 토큰</th>
+              <th>API 환산</th>
+            </tr>
+          </thead>
+          <tbody id="bands"></tbody>
+        </table>
+      </section>
+      <section>
+        <h2>최근 48시간 (시간당)</h2>
+        <div class="bars" id="hourly"></div>
+      </section>
+      <section>
+        <h2>최근 30일 (일당)</h2>
+        <div class="bars" id="daily"></div>
+      </section>
+      <div class="meta" id="meta"></div>
+    </main>
+    <script>
+      const { invoke } = window.__TAURI__.core;
+
+      function fmtB(n) {
+        if (n == null) return "--";
+        const b = n / 1e9;
+        if (Math.abs(b) >= 1) return `${b.toFixed(3)}B`;
+        if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+        if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+        return String(Math.round(n));
+      }
+      function fmtUsd(n) {
+        if (n == null) return "--";
+        const sign = n < 0 ? "-" : "";
+        const v = Math.abs(n);
+        if (v >= 1000) return `${sign}$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+        return `${sign}$${v.toFixed(2)}`;
+      }
+      function hourLabel(ts) {
+        const d = new Date(ts * 1000);
+        return `${String(d.getHours()).padStart(2, "0")}`;
+      }
+      function dayLabel(ts) {
+        const d = new Date(ts * 1000);
+        return `${d.getMonth() + 1}/${d.getDate()}`;
+      }
+
+      function paintBars(el, rows, labelFn) {
+        el.innerHTML = "";
+        const max = Math.max(1, ...rows.map((r) => r.cost_usd || r.tokens || 0));
+        rows.forEach((r) => {
+          const col = document.createElement("div");
+          col.className = "col";
+          const stack = document.createElement("div");
+          stack.className = "stack";
+          const i = document.createElement("i");
+          const h = ((r.cost_usd || 0) / max) * 100;
+          i.style.height = `${Math.max(h, r.cost_usd > 0 ? 3 : 0)}%`;
+          i.title = `${labelFn(r.start_ts)}\n${fmtB(r.tokens)} tok\n${fmtUsd(r.cost_usd)}`;
+          stack.appendChild(i);
+          const t = document.createElement("div");
+          t.className = "t";
+          t.textContent = labelFn(r.start_ts);
+          col.appendChild(stack);
+          col.appendChild(t);
+          el.appendChild(col);
+        });
+      }
+
+      async function load() {
+        const s = await invoke("get_stats");
+        const L = s.latest || {};
+        document.getElementById("cards").innerHTML = [
+          ["토큰", fmtB(L.total_tokens)],
+          ["캐시 토큰", fmtB(L.cached_input_tokens)],
+          ["API 환산", fmtUsd(L.total_cost_usd)],
+          ["이득", fmtUsd(L.savings_usd), "gain"],
+        ]
+          .map(
+            ([k, v, c]) =>
+              `<div class="card"><div class="k">${k}</div><div class="v ${c || ""}">${v}</div></div>`
+          )
+          .join("");
+
+        document.getElementById("bands").innerHTML = (s.bands || [])
+          .map(
+            (b) => `<tr>
+              <td>${b.label}</td>
+              <td>${(b.requests || 0).toLocaleString()}</td>
+              <td>${fmtB(b.tokens)}</td>
+              <td>${fmtB(b.cached)}</td>
+              <td>${fmtUsd(b.cost_usd)}</td>
+            </tr>`
+          )
+          .join("");
+
+        paintBars(document.getElementById("hourly"), s.hourly || [], hourLabel);
+        paintBars(document.getElementById("daily"), s.daily || [], dayLabel);
+
+        const first = s.first_ts ? new Date(s.first_ts * 1000).toLocaleString() : "—";
+        document.getElementById("meta").textContent =
+          `스냅샷 ${s.snapshot_count}개 · 기록 시작 ${first} · 요청 ${Number(L.request_count || 0).toLocaleString()}회`;
+      }
+
+      load();
+      setInterval(load, 15000);
+    </script>
+  </body>
+</html>
