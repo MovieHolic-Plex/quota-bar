@@ -182,7 +182,6 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let mut last = Instant::now() - Duration::from_secs(10_000);
                 loop {
-                    redock(&handle);
                     let interval = handle
                         .try_state::<AppState>()
                         .map(|s| s.config.lock().unwrap().poll_interval_secs)
@@ -190,15 +189,17 @@ pub fn run() {
                         .max(30);
                     let due = last.elapsed() >= Duration::from_secs(interval);
                     let notified = if let Some(state) = handle.try_state::<AppState>() {
-                        let timeout = tokio::time::sleep(Duration::from_millis(250));
+                        let timeout = tokio::time::sleep(Duration::from_millis(1500));
                         tokio::select! {
                             _ = state.refresh.notified() => true,
                             _ = timeout => false,
                         }
                     } else {
-                        tokio::time::sleep(Duration::from_millis(800)).await;
+                        tokio::time::sleep(Duration::from_millis(1500)).await;
                         false
                     };
+                    // Only move the window if the taskbar/tray cluster actually changed.
+                    redock(&handle);
                     if due || notified {
                         if let Some(state) = handle.try_state::<AppState>() {
                             poll_once(&handle, state.inner()).await;

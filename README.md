@@ -75,7 +75,7 @@ The proxy only reports live remaining quota on **`POST /v1/messages`** responses
 
 ## Taskbar placement
 
-Windows 11's taskbar is a XAML island, so third-party child windows parented to `Shell_TrayWnd` are drawn *behind* it and disappear. Quota Bar instead keeps a top-level TOPMOST popup **flush on the taskbar strip, immediately left of the clock/system tray**, matching taskbar height. The 5-hour row shows remaining percent plus **countdown and reset clock** (`3h 36m · 13:20`).
+Windows 11's taskbar is a XAML island, so child windows parented to `Shell_TrayWnd` vanish. Quota Bar uses a top-level popup **flush on the taskbar, immediately left of the right-hand cluster** (clock, system tray, TrafficMonitor, and similar overlays) so it does not sit on top of them. The window is only moved when that cluster actually changes, which avoids flicker. The 5-hour row shows remaining percent plus **countdown and reset clock** (`3h 36m · 13:20`).
 
 ## Config
 
