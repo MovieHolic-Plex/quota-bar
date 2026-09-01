@@ -1,12 +1,12 @@
 :root {
-  --bg: rgba(20, 20, 20, 0.78);
-  --stroke: rgba(255, 255, 255, 0.08);
+  --bg: #1c1c1c;
   --text: #f3f3f3;
-  --muted: #b3b3b3;
+  --muted: #b8b8b8;
   --ok: #3dd68c;
   --warn: #f5c518;
   --bad: #ff6b6b;
-  --track: rgba(255, 255, 255, 0.12);
+  --track: rgba(255, 255, 255, 0.14);
+  --line: rgba(255, 255, 255, 0.08);
 }
 
 html,
@@ -15,61 +15,50 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: transparent;
-  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   user-select: none;
   cursor: default;
-}
-
-body {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 4px 0 4px 6px;
-  box-sizing: border-box;
-}
-
-.chip {
-  height: 100%;
-  max-height: 40px;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-  box-sizing: border-box;
-  border-radius: 8px;
-  background: var(--bg);
-  border: 1px solid var(--stroke);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25) inset;
   color: var(--text);
-  backdrop-filter: blur(28px) saturate(140%);
 }
 
-.chip.setup {
+.bar {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 10px 5px 8px;
+  box-sizing: border-box;
+  border-right: 1px solid var(--line);
+}
+
+.bar.setup {
   justify-content: center;
 }
 
-.seg {
+.row {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
-  flex: 1;
+  height: 16px;
 }
 
 .lbl {
   font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   color: var(--muted);
   width: 18px;
+  flex: 0 0 18px;
 }
 
 .track {
   flex: 1;
-  height: 7px;
-  min-width: 52px;
+  height: 5px;
+  min-width: 48px;
   border-radius: 99px;
   background: var(--track);
   overflow: hidden;
@@ -83,44 +72,36 @@ body {
   transition: width 280ms ease, background-color 280ms ease;
 }
 
-.pct {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  width: 34px;
-  text-align: right;
-}
-
-.div {
-  width: 1px;
-  height: 16px;
-  background: var(--stroke);
-  flex: 0 0 1px;
-}
-
-.meta {
-  font-size: 10px;
-  color: var(--muted);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.chip.warn .fill-5,
 .fill.warn {
   background: var(--warn);
 }
 
-.chip.bad .fill-5,
 .fill.bad {
   background: var(--bad);
 }
 
-.chip.pulse {
-  animation: pulse 1.4s ease-in-out infinite;
+.pct {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  width: 32px;
+  flex: 0 0 32px;
+  text-align: right;
 }
 
-@keyframes pulse {
-  50% {
-    box-shadow: 0 0 0 1px rgba(255, 107, 107, 0.6) inset;
-  }
+.when {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+  min-width: 92px;
+  text-align: right;
+}
+
+.when.muted {
+  color: var(--muted);
+}
+
+.bar.pulse {
+  outline: 1px solid var(--bad);
 }

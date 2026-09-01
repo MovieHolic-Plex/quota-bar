@@ -38,30 +38,52 @@ pub fn taskbar_geometry() -> Option<TaskbarGeom> {
     None
 }
 
+#[cfg(windows)]
+fn tray_hwnd() -> Option<windows::Win32::Foundation::HWND> {
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
+
+    unsafe { FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()).ok() }
+}
+
 pub fn bar_rect(bar_width: u32) -> Option<(PhysicalPosition<i32>, PhysicalSize<u32>)> {
     let tb = taskbar_geometry()?;
-    let width = bar_width.min(tb.width as u32).max(280);
-    let pad = 8i32;
+    let width = bar_width.min(tb.width as u32).max(300);
 
-    // ABE_LEFT=0, ABE_TOP=1, ABE_RIGHT=2, ABE_BOTTOM=3
+    // Sit flush inside the taskbar strip (left side of a bottom/top bar).
     let (x, y, w, h) = match tb.edge {
-        1 => (tb.x + pad, tb.y, width, tb.height as u32), // top
-        0 => (tb.x, tb.y + tb.height - 48, tb.width as u32, 48), // left
-        2 => (tb.x, tb.y + tb.height - 48, tb.width as u32, 48), // right
-        _ => (tb.x + pad, tb.y, width, tb.height as u32),  // bottom (default)
+        1 | 3 => (tb.x, tb.y, width, tb.height as u32),
+        0 => (tb.x, tb.y, tb.width as u32, width.min(tb.height as u32)),
+        2 => (tb.x, tb.y, tb.width as u32, width.min(tb.height as u32)),
+        _ => (tb.x, tb.y, width, tb.height as u32),
     };
 
     Some((PhysicalPosition::new(x, y), PhysicalSize::new(w, h.max(40))))
 }
 
 pub fn dock_bar(window: &WebviewWindow, bar_width: u32) -> Result<(), String> {
-    if let Some((pos, size)) = bar_rect(bar_width) {
-        window.set_size(size).map_err(|e| e.to_string())?;
-        window.set_position(pos).map_err(|e| e.to_string())?;
-    }
-    apply_tool_window(window);
-    let _ = window.set_always_on_top(true);
     let _ = window.set_skip_taskbar(true);
+    let _ = window.set_shadow(false);
+    let _ = window.set_always_on_top(true);
+
+    let embedded = {
+        #[cfg(windows)]
+        {
+            embed_into_taskbar(window, bar_width)
+        }
+        #[cfg(not(windows))]
+        {
+            false
+        }
+    };
+
+    if !embedded {
+        if let Some((pos, size)) = bar_rect(bar_width) {
+            window.set_size(size).map_err(|e| e.to_string())?;
+            window.set_position(pos).map_err(|e| e.to_string())?;
+        }
+    }
+
     if !window.is_visible().unwrap_or(false) {
         window.show().map_err(|e| e.to_string())?;
     }
@@ -69,31 +91,57 @@ pub fn dock_bar(window: &WebviewWindow, bar_width: u32) -> Result<(), String> {
 }
 
 #[cfg(windows)]
-fn apply_tool_window(window: &WebviewWindow) {
+fn embed_into_taskbar(window: &WebviewWindow, bar_width: u32) -> bool {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, HWND_TOPMOST, SetWindowPos,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WS_EX_TOOLWINDOW,
+        GetParent, GetWindowLongW, SetParent, SetWindowLongW, SetWindowPos,
+        GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_SHOWWINDOW,
+        WS_CHILD, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_POPUP, WS_VISIBLE,
     };
 
     let Ok(raw) = window.hwnd() else {
-        return;
+        return false;
     };
+    let Some(tb) = taskbar_geometry() else {
+        return false;
+    };
+    let Some(tray) = tray_hwnd() else {
+        return false;
+    };
+
     unsafe {
         let hwnd = HWND(raw.0 as *mut _);
-        let ex = GetWindowLongW(hwnd, GWL_EXSTYLE);
-        SetWindowLongW(hwnd, GWL_EXSTYLE, ex | WS_EX_TOOLWINDOW.0 as i32);
+        let parent = GetParent(hwnd).unwrap_or_default();
+        if parent != tray {
+            let mut style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+            style &= !WS_POPUP.0;
+            style |= WS_CHILD.0 | WS_VISIBLE.0;
+            SetWindowLongW(hwnd, GWL_STYLE, style as i32);
+
+            let mut ex = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+            ex |= WS_EX_TOOLWINDOW.0;
+            ex &= !WS_EX_LAYERED.0;
+            SetWindowLongW(hwnd, GWL_EXSTYLE, ex as i32);
+
+            let _ = SetParent(hwnd, tray);
+        }
+
+        let width = bar_width.min(tb.width as u32).max(300) as i32;
+        let (rel_x, rel_y, w, h) = match tb.edge {
+            1 | 3 => (0, 0, width, tb.height),
+            0 | 2 => (0, 0, tb.width, tb.height.min(48)),
+            _ => (0, 0, width, tb.height),
+        };
+
         let _ = SetWindowPos(
             hwnd,
             HWND_TOPMOST,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            rel_x,
+            rel_y,
+            w,
+            h,
+            SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         );
     }
+    true
 }
-
-#[cfg(not(windows))]
-fn apply_tool_window(_window: &WebviewWindow) {}

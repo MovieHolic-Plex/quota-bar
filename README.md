@@ -75,7 +75,7 @@ The proxy only reports live remaining quota on **`POST /v1/messages`** responses
 
 ## Taskbar placement
 
-Quota Bar measures the real taskbar rectangle with `SHAppBarMessage(ABM_GETTASKBARPOS)` and pins a frameless, always-on-top, skip-taskbar window onto that strip (left side, matching taskbar height). Bottom and top taskbars are supported.
+Quota Bar finds `Shell_TrayWnd` and parents its window as a **child of the Windows taskbar**, sized to the taskbar height so it reads as a taskbar segment rather than a floating overlay. The 5-hour row shows remaining percent plus **countdown and reset clock** (`3h 36m · 13:20`).
 
 ## Config
 
