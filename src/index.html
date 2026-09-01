@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,18 +8,17 @@
   </head>
   <body>
     <div id="chip" class="bar" title="Click to refresh · Right-click for stats">
-      <div class="row">
-        <span class="lbl">tok</span>
-        <span class="val" id="tok">--</span>
-        <span class="lbl">cache</span>
-        <span class="val" id="cache">--</span>
+      <div class="info">
+        <div class="row">
+          <span class="lbl">cache</span>
+          <span class="val" id="cache">--</span>
+        </div>
+        <div class="row">
+          <span class="lbl">이득</span>
+          <span class="val gain" id="gain">--</span>
+        </div>
       </div>
-      <div class="row">
-        <span class="lbl">API</span>
-        <span class="val" id="api">--</span>
-        <span class="lbl">이득</span>
-        <span class="val gain" id="gain">--</span>
-      </div>
+      <div class="spark" id="spark" title="1분 사용량 (API $)"></div>
     </div>
     <script src="main.js"></script>
   </body>

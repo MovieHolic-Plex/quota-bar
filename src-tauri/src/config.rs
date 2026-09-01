@@ -15,9 +15,12 @@ pub struct AppConfig {
     pub probe_model: String,
     #[serde(default = "default_bar_width")]
     pub bar_width: u32,
-    /// What you actually paid for the proxy. Savings = API-equivalent cost minus this.
+    /// Deprecated. Use pro_usd.
     #[serde(default)]
     pub paid_usd: f64,
+    /// Claude Pro monthly USD. Savings = API-equivalent cost minus this.
+    #[serde(default = "default_pro_usd")]
+    pub pro_usd: f64,
 }
 
 impl Default for AppConfig {
@@ -28,6 +31,7 @@ impl Default for AppConfig {
             probe_model: default_model(),
             bar_width: default_bar_width(),
             paid_usd: 0.0,
+            pro_usd: default_pro_usd(),
         }
     }
 }
@@ -45,7 +49,11 @@ fn default_model() -> String {
 }
 
 fn default_bar_width() -> u32 {
-    420
+    460
+}
+
+fn default_pro_usd() -> f64 {
+    20.0
 }
 
 pub fn config_dir() -> Option<PathBuf> {
@@ -66,13 +74,16 @@ pub fn load_config() -> AppConfig {
             }
         }
     }
-    cfg.poll_interval_secs = cfg.poll_interval_secs.max(30);
+    cfg.poll_interval_secs = cfg.poll_interval_secs.max(15);
     cfg.base_url = cfg.base_url.trim_end_matches('/').to_string();
     if cfg.probe_model.trim().is_empty() {
         cfg.probe_model = default_model();
     }
     if cfg.bar_width < 280 {
         cfg.bar_width = 280;
+    }
+    if cfg.pro_usd <= 0.0 {
+        cfg.pro_usd = default_pro_usd();
     }
     cfg
 }

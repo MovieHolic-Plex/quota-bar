@@ -7,7 +7,9 @@ pub struct QuotaSnapshot {
     pub cached_input_tokens: i64,
     pub total_cost_usd: f64,
     pub paid_usd: f64,
+    pub pro_usd: f64,
     pub savings_usd: f64,
+    pub cache_pct: f64,
     pub error: Option<String>,
     pub fetched_at: Option<u64>,
 }
@@ -58,7 +60,13 @@ pub async fn fetch_usage(base_url: &str, api_key: &str) -> Result<QuotaSnapshot,
         cached_input_tokens: parsed.cached_input_tokens,
         total_cost_usd: parsed.total_cost_usd,
         paid_usd: 0.0,
-        savings_usd: parsed.total_cost_usd,
+        pro_usd: 20.0,
+        savings_usd: parsed.total_cost_usd - 20.0,
+        cache_pct: if parsed.total_tokens > 0 {
+            parsed.cached_input_tokens as f64 / parsed.total_tokens as f64 * 100.0
+        } else {
+            0.0
+        },
         error: None,
         fetched_at: Some(now_unix()),
     })

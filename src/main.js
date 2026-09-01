@@ -1,19 +1,7 @@
-const tok = document.getElementById("tok");
-const cache = document.getElementById("cache");
-const api = document.getElementById("api");
-const gain = document.getElementById("gain");
+const cacheEl = document.getElementById("cache");
+const gainEl = document.getElementById("gain");
+const spark = document.getElementById("spark");
 const chip = document.getElementById("chip");
-
-function fmtB(n) {
-  if (n == null || Number.isNaN(n)) return "--";
-  const b = n / 1e9;
-  if (b >= 100) return `${b.toFixed(1)}B`;
-  if (b >= 10) return `${b.toFixed(2)}B`;
-  if (b >= 1) return `${b.toFixed(3)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(Math.round(n));
-}
 
 function fmtUsd(n) {
   if (n == null || Number.isNaN(n)) return "--";
@@ -25,29 +13,52 @@ function fmtUsd(n) {
   return `${sign}$${v.toFixed(2)}`;
 }
 
+function fmtB(n) {
+  if (n == null || Number.isNaN(n)) return "--";
+  const b = n / 1e9;
+  if (Math.abs(b) >= 1) return `${b.toFixed(2)}B`;
+  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
+  return String(Math.round(n));
+}
+
+function paintSpark(minutes) {
+  spark.innerHTML = "";
+  const rows = minutes || [];
+  const max = Math.max(0.0001, ...rows.map((r) => r.cost_usd || 0));
+  rows.forEach((r) => {
+    const b = document.createElement("b");
+    const h = Math.max(1, Math.round(((r.cost_usd || 0) / max) * 32));
+    b.style.height = `${h}px`;
+    if (!r.cost_usd) b.classList.add("dim");
+    const t = new Date((r.start_ts || 0) * 1000);
+    const hh = String(t.getHours()).padStart(2, "0");
+    const mm = String(t.getMinutes()).padStart(2, "0");
+    b.title = `${hh}:${mm}  ${fmtUsd(r.cost_usd)}  ${fmtB(r.tokens)} tok`;
+    spark.appendChild(b);
+  });
+}
+
 function apply(q) {
   chip.classList.remove("setup");
   if (!q) return;
   if (q.error) {
-    tok.textContent = q.error;
-    cache.textContent = "";
-    api.textContent = "";
-    gain.textContent = "";
+    cacheEl.textContent = q.error;
+    gainEl.textContent = "";
+    spark.innerHTML = "";
     if (q.error === "no api key") chip.classList.add("setup");
     chip.title = q.error;
     return;
   }
-  tok.textContent = fmtB(q.total_tokens);
-  cache.textContent = fmtB(q.cached_input_tokens);
-  api.textContent = fmtUsd(q.total_cost_usd);
+  const pct = q.cache_pct != null ? q.cache_pct : 0;
+  cacheEl.textContent = `${pct.toFixed(1)}%`;
   const sav = q.savings_usd || 0;
-  gain.textContent = `${sav >= 0 ? "+" : "-"}${fmtUsd(Math.abs(sav))}`;
-  const cachePct =
-    q.total_tokens > 0 ? ((q.cached_input_tokens / q.total_tokens) * 100).toFixed(1) : "0";
+  gainEl.textContent = `${sav >= 0 ? "+" : "-"}${fmtUsd(Math.abs(sav))}`;
+  paintSpark(q.minutes || []);
   chip.title = [
-    `tokens ${fmtB(q.total_tokens)}  cache ${fmtB(q.cached_input_tokens)} (${cachePct}%)`,
-    `API equivalent ${fmtUsd(q.total_cost_usd)}  paid ${fmtUsd(q.paid_usd)}  savings ${fmtUsd(q.savings_usd)}`,
-    `${q.request_count} requests`,
+    `cache ${pct.toFixed(1)}%  (${fmtB(q.cached_input_tokens)} / ${fmtB(q.total_tokens)})`,
+    `API ${fmtUsd(q.total_cost_usd)} − Pro ${fmtUsd(q.pro_usd)} = ${fmtUsd(q.savings_usd)}`,
+    `${Number(q.request_count || 0).toLocaleString()} requests · 오른쪽은 1분 사용량`,
     "Click refresh · Right-click stats",
   ].join("\n");
 }
@@ -64,6 +75,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   try {
     apply(await invoke("current_quota"));
   } catch {
-    tok.textContent = "starting…";
+    cacheEl.textContent = "starting…";
   }
 });

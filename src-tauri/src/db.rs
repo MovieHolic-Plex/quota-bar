@@ -1,6 +1,7 @@
 use crate::quota::{now_unix, QuotaSnapshot};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 pub fn open() -> Result<Connection, String> {
@@ -53,7 +54,7 @@ pub struct BandStats {
     pub samples: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct BucketRow {
     pub start_ts: i64,
     pub tokens: i64,
@@ -68,6 +69,7 @@ pub struct UsageStats {
     pub bands: Vec<BandStats>,
     pub hourly: Vec<BucketRow>,
     pub daily: Vec<BucketRow>,
+    pub minutes: Vec<BucketRow>,
     pub snapshot_count: i64,
     pub first_ts: Option<i64>,
 }
@@ -244,22 +246,29 @@ pub fn load_stats(conn: &Connection, paid_usd: f64) -> Result<UsageStats, String
             bands: vec![],
             hourly: vec![],
             daily: vec![],
+            minutes: vec![],
             snapshot_count,
             first_ts,
         });
     };
 
-    let mut snap = QuotaSnapshot {
+    let cache_pct = if latest.total_tokens > 0 {
+        latest.cached_input_tokens as f64 / latest.total_tokens as f64 * 100.0
+    } else {
+        0.0
+    };
+    let snap = QuotaSnapshot {
         request_count: latest.request_count,
         total_tokens: latest.total_tokens,
         cached_input_tokens: latest.cached_input_tokens,
         total_cost_usd: latest.total_cost_usd,
         paid_usd,
+        pro_usd: paid_usd,
         savings_usd: latest.total_cost_usd - paid_usd,
+        cache_pct,
         error: None,
         fetched_at: Some(latest.ts as u64),
     };
-    snap.savings_usd = snap.total_cost_usd - paid_usd;
 
     let bands = vec![
         band(conn, "1h", 3600, &latest)?,
@@ -275,7 +284,33 @@ pub fn load_stats(conn: &Connection, paid_usd: f64) -> Result<UsageStats, String
         bands,
         hourly: buckets(conn, 3600, 48 * 3600)?,
         daily: buckets(conn, 86400, 30 * 86400)?,
+        minutes: minute_series(conn, 30)?,
         snapshot_count,
         first_ts,
     })
+}
+
+pub fn minute_series(conn: &Connection, minutes: i64) -> Result<Vec<BucketRow>, String> {
+    let now = now_unix() as i64;
+    let lookback = minutes * 60;
+    let raw = buckets(conn, 60, lookback)?;
+    let mut by_ts: HashMap<i64, BucketRow> = HashMap::new();
+    for row in raw {
+        by_ts.insert(row.start_ts, row);
+    }
+    let end = (now / 60) * 60;
+    let start = end - (minutes - 1) * 60;
+    let mut out = Vec::with_capacity(minutes as usize);
+    let mut t = start;
+    while t <= end {
+        out.push(by_ts.remove(&t).unwrap_or(BucketRow {
+            start_ts: t,
+            tokens: 0,
+            cached: 0,
+            cost_usd: 0.0,
+            requests: 0,
+        }));
+        t += 60;
+    }
+    Ok(out)
 }

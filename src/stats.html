@@ -203,7 +203,8 @@
           ["토큰", fmtB(L.total_tokens)],
           ["캐시 토큰", fmtB(L.cached_input_tokens)],
           ["API 환산", fmtUsd(L.total_cost_usd)],
-          ["이득", fmtUsd(L.savings_usd), "gain"],
+          ["캐시 비율", `${(L.cache_pct || 0).toFixed(1)}%`],
+          ["이득 vs Pro", fmtUsd(L.savings_usd), "gain"],
         ]
           .map(
             ([k, v, c]) =>

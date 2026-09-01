@@ -8,10 +8,9 @@ It sits on the taskbar next to the clock cluster and shows **cumulative usage fr
 
 | Field | Source |
 | --- | --- |
-| **tok** | `total_tokens` in billions |
-| **cache** | `cached_input_tokens` in billions |
-| **API** | `total_cost_usd` — Anthropic list-price equivalent |
-| **이득** | `total_cost_usd − paid_usd` (set what you actually paid in Settings) |
+| **cache** | `cached_input_tokens / total_tokens` |
+| **이득** | `total_cost_usd − Claude Pro ($20/mo, configurable)` |
+| **spark** | last 30 minutes of API-equivalent spend, 1-minute buckets |
 
 Click the bar to refresh. Right-click opens **Stats**.
 
@@ -65,7 +64,7 @@ ANTHROPIC_BASE_URL=https://claude.nekos.me
 ANTHROPIC_API_KEY=sk-clb-...
 ```
 
-Set **What you paid for this proxy** to compute net savings. Leave it `0` to treat the full API-equivalent cost as savings.
+Savings are **API list-price equivalent minus Claude Pro ($20/mo)**. Change the Pro amount in Settings if you compare against Max.
 
 ## Polling
 
