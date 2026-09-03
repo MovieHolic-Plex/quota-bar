@@ -1,6 +1,7 @@
 const m10El = document.getElementById("m10");
 const h1El = document.getElementById("h1");
 const d1El = document.getElementById("d1");
+const d1Lbl = document.getElementById("d1lbl");
 const qfill = document.getElementById("qfill");
 const qpct = document.getElementById("qpct");
 const chip = document.getElementById("chip");
@@ -30,6 +31,14 @@ function fmtPct(n) {
   if (v >= 100) return `${v.toFixed(0)}%`;
   if (v >= 10) return `${v.toFixed(0)}%`;
   return `${v.toFixed(1)}%`;
+}
+
+function fmtCountdown(secs) {
+  if (secs == null) return "";
+  const s = Math.max(0, secs);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}h${String(m).padStart(2, "0")}m` : `${m}m`;
 }
 
 function quotaTone(pct) {
@@ -153,17 +162,23 @@ function apply(q) {
   spend10 = q.spend_10m || 0;
   const pct = q.daily_pct || 0;
   const cap = q.daily_quota_usd || 6400;
+  const anchored = q.spend_since_reset != null;
+  const dayVal = anchored ? q.spend_since_reset : q.spend_1d;
   const tone = quotaTone(pct);
   m10El.textContent = fmtUsd(q.spend_10m);
   h1El.textContent = fmtUsd(q.spend_1h);
-  d1El.textContent = fmtUsd(q.spend_1d);
+  d1El.textContent = fmtUsd(dayVal);
+  if (d1Lbl) d1Lbl.textContent = anchored ? "today" : "1d";
   qpct.textContent = fmtPct(pct);
   qfill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
   qfill.className = `fill ${tone}`.trim();
   qpct.className = `pct ${tone}`.trim();
+  const dailyLine = anchored
+    ? `since reset ${fmtPct(pct)}  ${fmtUsd(dayVal)} / ${fmtUsd(cap)} · resets in ${fmtCountdown(q.reset_in_secs)} (${q.daily_reset_utc}Z)`
+    : `daily ${fmtPct(pct)}  ${fmtUsd(dayVal)} / ${fmtUsd(cap)} (rolling 24h)`;
   chip.title = [
-    `daily ${fmtPct(pct)}  ${fmtUsd(q.spend_1d)} / ${fmtUsd(cap)}`,
-    `10m ${fmtUsd(q.spend_10m)} · 1h ${fmtUsd(q.spend_1h)}`,
+    dailyLine,
+    `10m ${fmtUsd(q.spend_10m)} · 1h ${fmtUsd(q.spend_1h)} · 1d ${fmtUsd(q.spend_1d)}`,
     "Pro 하루 한도 $6400 · 가재 최고속은 10분에 $100부터",
     "드래그해서 이동 · 더블클릭 위치 리셋 · 우클릭 통계",
   ].join("\n");

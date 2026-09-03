@@ -73,6 +73,10 @@ pub struct UsageStats {
     pub snapshot_count: i64,
     pub first_ts: Option<i64>,
     pub daily_quota_usd: f64,
+    /// Spend since the key's last daily reset (None when no reset time is configured).
+    pub since_reset: Option<BandStats>,
+    pub last_reset_ts: Option<i64>,
+    pub next_reset_ts: Option<i64>,
 }
 
 struct Row {
@@ -150,6 +154,22 @@ fn band(conn: &Connection, label: &str, seconds: u64, latest: &Row) -> Result<Ba
     } else {
         latest.ts.saturating_sub(seconds as i64)
     };
+    band_from_cutoff(conn, label, seconds, cutoff, latest)
+}
+
+/// Delta since an absolute point in time (e.g. the key's last daily reset).
+fn band_since(conn: &Connection, label: &str, since_ts: i64, latest: &Row) -> Result<BandStats, String> {
+    let seconds = latest.ts.saturating_sub(since_ts).max(0) as u64;
+    band_from_cutoff(conn, label, seconds, since_ts, latest)
+}
+
+fn band_from_cutoff(
+    conn: &Connection,
+    label: &str,
+    seconds: u64,
+    cutoff: i64,
+    latest: &Row,
+) -> Result<BandStats, String> {
     let baseline = row_at_or_before(conn, cutoff)?.or(earliest_row(conn)?);
     let Some(old) = baseline else {
         return Ok(BandStats {
@@ -231,7 +251,12 @@ fn buckets(conn: &Connection, bucket_secs: i64, lookback_secs: i64) -> Result<Ve
     Ok(out)
 }
 
-pub fn load_stats(conn: &Connection, paid_usd: f64, daily_quota_usd: f64) -> Result<UsageStats, String> {
+pub fn load_stats(
+    conn: &Connection,
+    paid_usd: f64,
+    daily_quota_usd: f64,
+    reset: Option<(i64, i64)>,
+) -> Result<UsageStats, String> {
     let latest_row = latest_row(conn)?;
     let snapshot_count: i64 = conn
         .query_row("SELECT COUNT(*) FROM snapshots", [], |r| r.get(0))
@@ -251,6 +276,9 @@ pub fn load_stats(conn: &Connection, paid_usd: f64, daily_quota_usd: f64) -> Res
             snapshot_count,
             first_ts,
             daily_quota_usd,
+            since_reset: None,
+            last_reset_ts: reset.map(|r| r.0),
+            next_reset_ts: reset.map(|r| r.1),
         });
     };
 
@@ -283,6 +311,11 @@ pub fn load_stats(conn: &Connection, paid_usd: f64, daily_quota_usd: f64) -> Res
         band(conn, "all", 0, &latest)?,
     ];
 
+    let since_reset = match reset {
+        Some((last, _)) => Some(band_since(conn, "reset", last, &latest)?),
+        None => None,
+    };
+
     Ok(UsageStats {
         latest: snap,
         bands,
@@ -292,7 +325,18 @@ pub fn load_stats(conn: &Connection, paid_usd: f64, daily_quota_usd: f64) -> Res
         snapshot_count,
         first_ts,
         daily_quota_usd,
+        since_reset,
+        last_reset_ts: reset.map(|r| r.0),
+        next_reset_ts: reset.map(|r| r.1),
     })
+}
+
+/// API-equivalent USD spent since `since_ts` (0.0 when there are no samples).
+pub fn spend_since(conn: &Connection, since_ts: i64) -> Result<f64, String> {
+    let Some(latest) = latest_row(conn)? else {
+        return Ok(0.0);
+    };
+    Ok(band_since(conn, "reset", since_ts, &latest)?.cost_usd)
 }
 
 pub fn recent_spend(conn: &Connection) -> Result<(f64, f64, f64), String> {

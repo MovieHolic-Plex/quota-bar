@@ -21,9 +21,15 @@ pub struct AppConfig {
     /// Claude Pro monthly USD. Savings = API-equivalent cost minus this.
     #[serde(default = "default_pro_usd")]
     pub pro_usd: f64,
-    /// Rolling 24h API-equivalent cap for the Pro proxy key, in USD.
+    /// API-equivalent daily cap for the proxy key, in USD.
     #[serde(default = "default_daily_quota_usd")]
     pub daily_quota_usd: f64,
+    /// Time of day (UTC, "HH:MM") at which the proxy resets the daily cap.
+    /// When set, the daily figure counts spend since the last reset instead of
+    /// a rolling 24h window, which is what actually decides whether the next
+    /// request gets a 429. None = rolling 24h (previous behaviour).
+    #[serde(default)]
+    pub daily_reset_utc: Option<String>,
     /// Offset from the taskbar's left/top edge. None = auto (left of tray cluster).
     #[serde(default)]
     pub bar_offset_x: Option<i32>,
@@ -39,6 +45,7 @@ impl Default for AppConfig {
             paid_usd: 0.0,
             pro_usd: default_pro_usd(),
             daily_quota_usd: default_daily_quota_usd(),
+            daily_reset_utc: None,
             bar_offset_x: None,
         }
     }
@@ -100,7 +107,37 @@ pub fn load_config() -> AppConfig {
     if cfg.daily_quota_usd <= 0.0 {
         cfg.daily_quota_usd = default_daily_quota_usd();
     }
+    cfg.daily_reset_utc = normalize_reset(cfg.daily_reset_utc.as_deref());
     cfg
+}
+
+/// Accepts "H:MM" / "HH:MM" (UTC). Returns the canonical "HH:MM" or None when
+/// empty or unparsable.
+pub fn normalize_reset(raw: Option<&str>) -> Option<String> {
+    let raw = raw?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let (h, m) = raw.split_once(':')?;
+    let h: u32 = h.trim().parse().ok()?;
+    let m: u32 = m.trim().parse().ok()?;
+    if h > 23 || m > 59 {
+        return None;
+    }
+    Some(format!("{h:02}:{m:02}"))
+}
+
+/// (last_reset, next_reset) as unix seconds for a "HH:MM" UTC reset time.
+pub fn reset_window(reset_utc: Option<&str>, now: i64) -> Option<(i64, i64)> {
+    let canon = normalize_reset(reset_utc)?;
+    let (h, m) = canon.split_once(':')?;
+    let secs_of_day = h.parse::<i64>().ok()? * 3600 + m.parse::<i64>().ok()? * 60;
+    let day_start = now - now.rem_euclid(86_400);
+    let mut last = day_start + secs_of_day;
+    if last > now {
+        last -= 86_400;
+    }
+    Some((last, last + 86_400))
 }
 
 pub fn save_config(cfg: &AppConfig) -> Result<(), String> {

@@ -3,7 +3,10 @@ mod db;
 mod quota;
 mod taskbar;
 
-use config::{has_api_key, key_preview, load_api_key, load_config, save_config, store_api_key, AppConfig};
+use config::{
+    has_api_key, key_preview, load_api_key, load_config, normalize_reset, reset_window, save_config,
+    store_api_key, AppConfig,
+};
 use db::{BucketRow, UsageStats};
 use quota::{fetch_usage, QuotaSnapshot};
 use rusqlite::Connection;
@@ -27,6 +30,8 @@ struct SettingsPatch {
     base_url: String,
     poll_interval_secs: u64,
     pro_usd: f64,
+    #[serde(default)]
+    daily_reset_utc: Option<String>,
     api_key: Option<String>,
 }
 
@@ -36,6 +41,7 @@ struct SettingsView {
     poll_interval_secs: u64,
     pro_usd: f64,
     bar_width: u32,
+    daily_reset_utc: Option<String>,
     has_key: bool,
     key_preview: Option<String>,
 }
@@ -49,7 +55,14 @@ struct BarView {
     spend_1h: f64,
     spend_1d: f64,
     daily_quota_usd: f64,
+    /// Share of the daily cap used. Anchored to the reset time when one is
+    /// configured (spend_since_reset / cap), otherwise rolling 24h.
     daily_pct: f64,
+    /// Spend since the key's last daily reset. None = no reset time configured.
+    spend_since_reset: Option<f64>,
+    /// Seconds until the next daily reset. None = no reset time configured.
+    reset_in_secs: Option<i64>,
+    daily_reset_utc: Option<String>,
 }
 
 fn apply_pro(snap: &mut QuotaSnapshot, pro_usd: f64) {
@@ -64,11 +77,17 @@ fn apply_pro(snap: &mut QuotaSnapshot, pro_usd: f64) {
 }
 
 fn bar_view(state: &AppState, snap: QuotaSnapshot) -> BarView {
-    let daily_quota_usd = state.config.lock().unwrap().daily_quota_usd.max(1.0);
+    let (daily_quota_usd, daily_reset_utc) = {
+        let cfg = state.config.lock().unwrap();
+        (cfg.daily_quota_usd.max(1.0), cfg.daily_reset_utc.clone())
+    };
+    let now = quota::now_unix() as i64;
+    let reset = reset_window(daily_reset_utc.as_deref(), now);
     let db = state.db.lock().unwrap();
     let minutes = db::minute_series(&db, 30).unwrap_or_default();
     let (spend_10m, spend_1h, spend_1d) = db::recent_spend(&db).unwrap_or((0.0, 0.0, 0.0));
-    let daily_pct = (spend_1d / daily_quota_usd) * 100.0;
+    let spend_since_reset = reset.map(|(last, _)| db::spend_since(&db, last).unwrap_or(0.0));
+    let daily_pct = (spend_since_reset.unwrap_or(spend_1d) / daily_quota_usd) * 100.0;
     BarView {
         snap,
         minutes,
@@ -77,6 +96,9 @@ fn bar_view(state: &AppState, snap: QuotaSnapshot) -> BarView {
         spend_1d,
         daily_quota_usd,
         daily_pct,
+        spend_since_reset,
+        reset_in_secs: reset.map(|(_, next)| (next - now).max(0)),
+        daily_reset_utc,
     }
 }
 
@@ -149,6 +171,7 @@ fn get_settings(state: State<AppState>) -> SettingsView {
         poll_interval_secs: cfg.poll_interval_secs,
         pro_usd: cfg.pro_usd,
         bar_width: cfg.bar_width,
+        daily_reset_utc: cfg.daily_reset_utc,
         has_key: has_api_key(),
         key_preview: key_preview(),
     }
@@ -165,6 +188,12 @@ fn save_settings(state: State<AppState>, settings: SettingsPatch) -> Result<(), 
     cfg.base_url = settings.base_url.trim_end_matches('/').to_string();
     cfg.poll_interval_secs = settings.poll_interval_secs.max(15);
     cfg.pro_usd = if settings.pro_usd > 0.0 { settings.pro_usd } else { 20.0 };
+    if let Some(raw) = settings.daily_reset_utc.as_deref() {
+        if !raw.trim().is_empty() && normalize_reset(Some(raw)).is_none() {
+            return Err("Daily reset time must be HH:MM (UTC), e.g. 06:34".into());
+        }
+    }
+    cfg.daily_reset_utc = normalize_reset(settings.daily_reset_utc.as_deref());
     save_config(&cfg)?;
     state.refresh.notify_one();
     Ok(())
@@ -234,11 +263,12 @@ fn open_stats(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn get_stats(state: State<AppState>) -> Result<UsageStats, String> {
-    let (pro, daily_quota) = {
+    let (pro, daily_quota, reset_utc) = {
         let cfg = state.config.lock().unwrap();
-        (cfg.pro_usd, cfg.daily_quota_usd)
+        (cfg.pro_usd, cfg.daily_quota_usd, cfg.daily_reset_utc.clone())
     };
-    db::load_stats(&state.db.lock().unwrap(), pro, daily_quota)
+    let reset = reset_window(reset_utc.as_deref(), quota::now_unix() as i64);
+    db::load_stats(&state.db.lock().unwrap(), pro, daily_quota, reset)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

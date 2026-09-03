@@ -95,6 +95,11 @@
         Claude Pro monthly (USD)
         <input id="pro" type="number" min="0" step="1" />
       </label>
+      <label>
+        Daily reset time (UTC, HH:MM — 비우면 최근 24시간 기준)
+        <input id="reset" placeholder="예: 06:34" autocomplete="off" />
+      </label>
+      <div class="warn">프록시의 일일 한도는 정해진 시각에 리셋됩니다(429 본문의 "Resets at …Z"). 시각을 넣으면 하루 쿼터 %가 "리셋 이후 사용량" 기준으로 바뀌고 다음 리셋까지 남은 시간을 보여줍니다.</div>
       <div class="warn">이득 = API 환산(total_cost_usd) − Claude Pro 월 요금(기본 $20). GET /v1/usage/self만 호출하고 1분마다 SQLite에 남깁니다.</div>
       <div class="ok" id="status"></div>
       <div class="row">
@@ -111,6 +116,7 @@
         document.getElementById("base").value = cfg.base_url || "";
         document.getElementById("interval").value = cfg.poll_interval_secs || 60;
         document.getElementById("pro").value = cfg.pro_usd || 20;
+        document.getElementById("reset").value = cfg.daily_reset_utc || "";
         document.getElementById("key").placeholder = cfg.has_key
           ? "자격 증명 관리자에 저장됨 (비워 두면 유지)"
           : "여기에 붙여 넣고 저장하세요";
@@ -125,6 +131,7 @@
               base_url: document.getElementById("base").value.trim(),
               poll_interval_secs: Number(document.getElementById("interval").value),
               pro_usd: Number(document.getElementById("pro").value),
+              daily_reset_utc: document.getElementById("reset").value.trim() || null,
               api_key: document.getElementById("key").value,
             },
           });
