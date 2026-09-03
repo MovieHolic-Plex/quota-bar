@@ -85,7 +85,7 @@
       </label>
       <label>
         API key
-        <input id="key" type="password" autocomplete="off" placeholder="sk-clb-…" />
+        <input id="key" type="password" autocomplete="off" placeholder="비워 두면 기존 키를 유지합니다" />
       </label>
       <label>
         Poll interval (seconds)
@@ -112,8 +112,8 @@
         document.getElementById("interval").value = cfg.poll_interval_secs || 60;
         document.getElementById("pro").value = cfg.pro_usd || 20;
         document.getElementById("key").placeholder = cfg.has_key
-          ? "saved in Credential Manager (leave blank to keep)"
-          : "sk-clb-…";
+          ? "자격 증명 관리자에 저장됨 (비워 두면 유지)"
+          : "여기에 붙여 넣고 저장하세요";
       }
 
       document.getElementById("save").onclick = async () => {

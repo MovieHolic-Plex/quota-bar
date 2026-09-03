@@ -1,13 +1,42 @@
+# deps / build
 /node_modules
 /dist
 /src-tauri/target
 /src-tauri/gen
 /src-tauri/WixTools
-*.log
+
+# env & secrets — never commit
 .env
 .env.*
-!.env.example
+*.env
+*.env.*
+.envrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa
+id_ed25519
+credentials.json
+secrets.json
+*.secret
+*.token
+
+# local app data (keys live in Credential Manager, not here)
 config.local.json
+config.json
+!config.example.json
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+usage.db
+
+# scratch / dumps
+_tmp_*
+tmp_*
+*.log
 Thumbs.db
 .DS_Store
 *.exe

@@ -1,6 +1,6 @@
 {
-  "base_url": "https://claude.nekos.me",
-  "poll_interval_secs": 180,
-  "probe_model": "claude-haiku-4-5-20251001",
-  "bar_width": 420
+  "base_url": "https://your-anthropic-compatible-proxy.example",
+  "poll_interval_secs": 60,
+  "bar_width": 520,
+  "pro_usd": 20
 }
