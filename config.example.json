@@ -3,5 +3,6 @@
   "poll_interval_secs": 60,
   "bar_width": 520,
   "pro_usd": 20,
-  "daily_quota_usd": 6400
+  "daily_quota_usd": 6400,
+  "daily_reset_utc": "06:34"
 }
