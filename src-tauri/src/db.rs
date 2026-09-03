@@ -72,6 +72,7 @@ pub struct UsageStats {
     pub minutes: Vec<BucketRow>,
     pub snapshot_count: i64,
     pub first_ts: Option<i64>,
+    pub daily_quota_usd: f64,
 }
 
 struct Row {
@@ -230,7 +231,7 @@ fn buckets(conn: &Connection, bucket_secs: i64, lookback_secs: i64) -> Result<Ve
     Ok(out)
 }
 
-pub fn load_stats(conn: &Connection, paid_usd: f64) -> Result<UsageStats, String> {
+pub fn load_stats(conn: &Connection, paid_usd: f64, daily_quota_usd: f64) -> Result<UsageStats, String> {
     let latest_row = latest_row(conn)?;
     let snapshot_count: i64 = conn
         .query_row("SELECT COUNT(*) FROM snapshots", [], |r| r.get(0))
@@ -249,6 +250,7 @@ pub fn load_stats(conn: &Connection, paid_usd: f64) -> Result<UsageStats, String
             minutes: vec![],
             snapshot_count,
             first_ts,
+            daily_quota_usd,
         });
     };
 
@@ -289,18 +291,18 @@ pub fn load_stats(conn: &Connection, paid_usd: f64) -> Result<UsageStats, String
         minutes: minute_series(conn, 30)?,
         snapshot_count,
         first_ts,
+        daily_quota_usd,
     })
 }
 
-pub fn recent_spend(conn: &Connection) -> Result<(f64, f64, f64, f64), String> {
+pub fn recent_spend(conn: &Connection) -> Result<(f64, f64, f64), String> {
     let Some(latest) = latest_row(conn)? else {
-        return Ok((0.0, 0.0, 0.0, 0.0));
+        return Ok((0.0, 0.0, 0.0));
     };
     let ten = band(conn, "10m", 600, &latest)?;
     let hour = band(conn, "1h", 3600, &latest)?;
     let day = band(conn, "1d", 24 * 3600, &latest)?;
-    let three = band(conn, "3d", 3 * 24 * 3600, &latest)?;
-    Ok((ten.cost_usd, hour.cost_usd, day.cost_usd, three.cost_usd))
+    Ok((ten.cost_usd, hour.cost_usd, day.cost_usd))
 }
 
 pub fn minute_series(conn: &Connection, minutes: i64) -> Result<Vec<BucketRow>, String> {

@@ -1,7 +1,8 @@
 const m10El = document.getElementById("m10");
 const h1El = document.getElementById("h1");
 const d1El = document.getElementById("d1");
-const d3El = document.getElementById("d3");
+const qfill = document.getElementById("qfill");
+const qpct = document.getElementById("qpct");
 const chip = document.getElementById("chip");
 const canvas = document.getElementById("bug");
 const ctx = canvas.getContext("2d");
@@ -21,6 +22,20 @@ function fmtUsd(n) {
 
 function heat(usd10) {
   return Math.min(1, Math.max(0, usd10 || 0) / 100);
+}
+
+function fmtPct(n) {
+  if (n == null || Number.isNaN(n)) return "--";
+  const v = Math.max(0, n);
+  if (v >= 100) return `${v.toFixed(0)}%`;
+  if (v >= 10) return `${v.toFixed(0)}%`;
+  return `${v.toFixed(1)}%`;
+}
+
+function quotaTone(pct) {
+  if (pct >= 90) return "hot";
+  if (pct >= 70) return "warn";
+  return "";
 }
 
 function speedFromSpend(usd10) {
@@ -126,21 +141,30 @@ function apply(q) {
     m10El.textContent = q.error;
     h1El.textContent = "";
     d1El.textContent = "";
-    d3El.textContent = "";
+    qpct.textContent = "";
+    qfill.style.width = "0%";
+    qfill.className = "fill";
+    qpct.className = "pct";
     if (q.error === "no api key") chip.classList.add("setup");
     chip.title = q.error;
     spend10 = 0;
     return;
   }
   spend10 = q.spend_10m || 0;
+  const pct = q.daily_pct || 0;
+  const cap = q.daily_quota_usd || 6400;
+  const tone = quotaTone(pct);
   m10El.textContent = fmtUsd(q.spend_10m);
   h1El.textContent = fmtUsd(q.spend_1h);
   d1El.textContent = fmtUsd(q.spend_1d);
-  d3El.textContent = fmtUsd(q.spend_3d);
+  qpct.textContent = fmtPct(pct);
+  qfill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+  qfill.className = `fill ${tone}`.trim();
+  qpct.className = `pct ${tone}`.trim();
   chip.title = [
+    `daily ${fmtPct(pct)}  ${fmtUsd(q.spend_1d)} / ${fmtUsd(cap)}`,
     `10m ${fmtUsd(q.spend_10m)} · 1h ${fmtUsd(q.spend_1h)}`,
-    `1d ${fmtUsd(q.spend_1d)} · 3d ${fmtUsd(q.spend_3d)}`,
-    "가재 최고속은 10분에 $100부터",
+    "Pro 하루 한도 $6400 · 가재 최고속은 10분에 $100부터",
     "드래그해서 이동 · 더블클릭 위치 리셋 · 우클릭 통계",
   ].join("\n");
 }

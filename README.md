@@ -33,7 +33,7 @@ Anthropic 호환 프록시의 누적 사용량을 시계 옆에 붙이고,
 Quota Bar는 그 숫자를 **작업 표시줄에 상주**시킵니다.
 
 - 5시간 윈도우가 아닙니다. 로드밸런서 뒤에서 계정이 바뀌면 그 숫자는 의미가 없습니다.
-- 대신 `GET /v1/usage/self` 의 **누적 사용량**을 받아, 스냅샷 차이로 10분 / 1시간 / 1일 / 3일을 계산합니다.
+- 대신 `GET /v1/usage/self` 의 **누적 사용량**을 받아, 스냅샷 차이로 10분 / 1시간 / 1일과 Pro 하루 쿼터 %를 계산합니다.
 - 주황 가재는 장식이 아닙니다. **최근 10분 지출이 클수록 걸음이 빨라집니다.** `$100 / 10분` 에서 최고속.
 
 ---
@@ -45,8 +45,8 @@ Quota Bar는 그 숫자를 **작업 표시줄에 상주**시킵니다.
 | 🦞 | 주황 가재. 10분 사용량이 오르면 더 빠르게, 더 신나게 기어 다닙니다 |
 | **10m** | 최근 10분의 API 환산 달러 |
 | **1h** | 최근 1시간 |
-| **1d** | 최근 24시간 |
-| **3d** | 최근 3일 |
+| **1d** | 최근 24시간 달러 |
+| **막대** | Pro 하루 한도 `$6400` 대비 24시간 사용량 % |
 
 시계 / TrafficMonitor 클러스터 **왼쪽**에 붙습니다. Windows 11이 작업 표시줄 자식 창을 덮어버려서, 이 앱은 작업 표시줄에 딱 붙인 **최상위 팝업**으로 살아 남습니다.
 
@@ -148,7 +148,7 @@ flowchart LR
   A[작업표시줄 가재] -->|60s| B[GET /v1/usage/self]
   B --> C[SQLite snapshots]
   C --> A
-  C --> D[Stats 1h · 1d · 3d · 7d · 30d]
+  C --> D[Stats 1h · 1d · 7d · 30d]
   E[Settings] -->|키| F[Windows Credential Manager]
   F --> B
 ```
@@ -172,7 +172,8 @@ flowchart LR
   "base_url": "https://your-anthropic-compatible-proxy.example",
   "poll_interval_secs": 60,
   "bar_width": 520,
-  "pro_usd": 20
+  "pro_usd": 20,
+  "daily_quota_usd": 6400
 }
 ```
 

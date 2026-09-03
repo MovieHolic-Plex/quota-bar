@@ -48,7 +48,8 @@ struct BarView {
     spend_10m: f64,
     spend_1h: f64,
     spend_1d: f64,
-    spend_3d: f64,
+    daily_quota_usd: f64,
+    daily_pct: f64,
 }
 
 fn apply_pro(snap: &mut QuotaSnapshot, pro_usd: f64) {
@@ -63,17 +64,19 @@ fn apply_pro(snap: &mut QuotaSnapshot, pro_usd: f64) {
 }
 
 fn bar_view(state: &AppState, snap: QuotaSnapshot) -> BarView {
+    let daily_quota_usd = state.config.lock().unwrap().daily_quota_usd.max(1.0);
     let db = state.db.lock().unwrap();
     let minutes = db::minute_series(&db, 30).unwrap_or_default();
-    let (spend_10m, spend_1h, spend_1d, spend_3d) =
-        db::recent_spend(&db).unwrap_or((0.0, 0.0, 0.0, 0.0));
+    let (spend_10m, spend_1h, spend_1d) = db::recent_spend(&db).unwrap_or((0.0, 0.0, 0.0));
+    let daily_pct = (spend_1d / daily_quota_usd) * 100.0;
     BarView {
         snap,
         minutes,
         spend_10m,
         spend_1h,
         spend_1d,
-        spend_3d,
+        daily_quota_usd,
+        daily_pct,
     }
 }
 
@@ -231,8 +234,11 @@ fn open_stats(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn get_stats(state: State<AppState>) -> Result<UsageStats, String> {
-    let pro = state.config.lock().unwrap().pro_usd;
-    db::load_stats(&state.db.lock().unwrap(), pro)
+    let (pro, daily_quota) = {
+        let cfg = state.config.lock().unwrap();
+        (cfg.pro_usd, cfg.daily_quota_usd)
+    };
+    db::load_stats(&state.db.lock().unwrap(), pro, daily_quota)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

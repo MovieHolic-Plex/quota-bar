@@ -199,7 +199,12 @@
       async function load() {
         const s = await invoke("get_stats");
         const L = s.latest || {};
+        const day = (s.bands || []).find((b) => b.label === "1d");
+        const dayCost = day ? day.cost_usd : 0;
+        const cap = s.daily_quota_usd || 6400;
+        const dayPct = (dayCost / cap) * 100;
         document.getElementById("cards").innerHTML = [
+          ["하루 쿼터", `${dayPct.toFixed(1)}% · ${fmtUsd(dayCost)} / ${fmtUsd(cap)}`],
           ["토큰", fmtB(L.total_tokens)],
           ["캐시 토큰", fmtB(L.cached_input_tokens)],
           ["API 환산", fmtUsd(L.total_cost_usd)],

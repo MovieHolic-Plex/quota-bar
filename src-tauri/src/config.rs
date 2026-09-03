@@ -21,6 +21,9 @@ pub struct AppConfig {
     /// Claude Pro monthly USD. Savings = API-equivalent cost minus this.
     #[serde(default = "default_pro_usd")]
     pub pro_usd: f64,
+    /// Rolling 24h API-equivalent cap for the Pro proxy key, in USD.
+    #[serde(default = "default_daily_quota_usd")]
+    pub daily_quota_usd: f64,
     /// Offset from the taskbar's left/top edge. None = auto (left of tray cluster).
     #[serde(default)]
     pub bar_offset_x: Option<i32>,
@@ -35,6 +38,7 @@ impl Default for AppConfig {
             bar_width: default_bar_width(),
             paid_usd: 0.0,
             pro_usd: default_pro_usd(),
+            daily_quota_usd: default_daily_quota_usd(),
             bar_offset_x: None,
         }
     }
@@ -58,6 +62,10 @@ fn default_bar_width() -> u32 {
 
 fn default_pro_usd() -> f64 {
     20.0
+}
+
+fn default_daily_quota_usd() -> f64 {
+    6400.0
 }
 
 pub fn config_dir() -> Option<PathBuf> {
@@ -88,6 +96,9 @@ pub fn load_config() -> AppConfig {
     }
     if cfg.pro_usd <= 0.0 {
         cfg.pro_usd = default_pro_usd();
+    }
+    if cfg.daily_quota_usd <= 0.0 {
+        cfg.daily_quota_usd = default_daily_quota_usd();
     }
     cfg
 }

@@ -1,7 +1,7 @@
 {
   "name": "quota-bar",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Windows taskbar quota bar for Anthropic-compatible Claude proxies",
   "scripts": {
     "dev": "tauri dev",
