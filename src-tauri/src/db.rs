@@ -298,6 +298,7 @@ pub fn load_stats(
         cache_pct,
         error: None,
         fetched_at: Some(latest.ts as u64),
+        limits: vec![],
     };
 
     let bands = vec![

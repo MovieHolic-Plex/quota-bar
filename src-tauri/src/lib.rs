@@ -268,7 +268,12 @@ fn get_stats(state: State<AppState>) -> Result<UsageStats, String> {
         (cfg.pro_usd, cfg.daily_quota_usd, cfg.daily_reset_utc.clone())
     };
     let reset = reset_window(reset_utc.as_deref(), quota::now_unix() as i64);
-    db::load_stats(&state.db.lock().unwrap(), pro, daily_quota, reset)
+    let mut stats = db::load_stats(&state.db.lock().unwrap(), pro, daily_quota, reset)?;
+    let live = state.quota.lock().unwrap();
+    if !live.limits.is_empty() {
+        stats.latest.limits = live.limits.clone();
+    }
+    Ok(stats)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

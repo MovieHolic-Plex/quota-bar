@@ -1,9 +1,9 @@
 const m10El = document.getElementById("m10");
 const h1El = document.getElementById("h1");
-const d1El = document.getElementById("d1");
-const d1Lbl = document.getElementById("d1lbl");
-const qfill = document.getElementById("qfill");
-const qpct = document.getElementById("qpct");
+const dayFill = document.getElementById("dayFill");
+const dayPct = document.getElementById("dayPct");
+const weekFill = document.getElementById("weekFill");
+const weekPct = document.getElementById("weekPct");
 const chip = document.getElementById("chip");
 const canvas = document.getElementById("bug");
 const ctx = canvas.getContext("2d");
@@ -45,6 +45,40 @@ function quotaTone(pct) {
   if (pct >= 90) return "hot";
   if (pct >= 70) return "warn";
   return "";
+}
+
+function microUsd(n) {
+  return (n || 0) / 1e6;
+}
+
+function pickLimit(limits, window) {
+  return (limits || []).find((l) => l.limit_window === window && !l.model_filter) || null;
+}
+
+function resetSecs(iso) {
+  if (!iso) return null;
+  const raw = /Z|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`;
+  const t = Date.parse(raw);
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, Math.round((t - Date.now()) / 1000));
+}
+
+function paintBar(fillEl, pctEl, pct) {
+  const p = pct == null || Number.isNaN(pct) ? 0 : pct;
+  const tone = quotaTone(p);
+  fillEl.style.width = `${Math.min(100, Math.max(0, p))}%`;
+  fillEl.className = `fill ${tone}`.trim();
+  pctEl.textContent = pct == null || Number.isNaN(pct) ? "--" : fmtPct(p);
+  pctEl.className = `pct ${tone}`.trim();
+}
+
+function limitLine(l, label) {
+  if (!l) return `${label} --`;
+  const remain = microUsd(l.remaining_value);
+  const inSecs = resetSecs(l.reset_at);
+  const reset = inSecs == null ? "" : ` · ${fmtCountdown(inSecs)}`;
+  const model = l.model_filter ? ` ${l.model_filter}` : "";
+  return `${label}${model} ${fmtPct(l.used_percent)}  ${fmtUsd(microUsd(l.current_value))} / ${fmtUsd(microUsd(l.max_value))}  left ${fmtUsd(remain)}${reset}`;
 }
 
 function speedFromSpend(usd10) {
@@ -149,39 +183,37 @@ function apply(q) {
   if (q.error) {
     m10El.textContent = q.error;
     h1El.textContent = "";
-    d1El.textContent = "";
-    qpct.textContent = "";
-    qfill.style.width = "0%";
-    qfill.className = "fill";
-    qpct.className = "pct";
+    paintBar(dayFill, dayPct, null);
+    paintBar(weekFill, weekPct, null);
+    dayPct.textContent = "";
+    weekPct.textContent = "";
     if (q.error === "no api key") chip.classList.add("setup");
     chip.title = q.error;
     spend10 = 0;
     return;
   }
   spend10 = q.spend_10m || 0;
-  const pct = q.daily_pct || 0;
-  const cap = q.daily_quota_usd || 6400;
-  const anchored = q.spend_since_reset != null;
-  const dayVal = anchored ? q.spend_since_reset : q.spend_1d;
-  const tone = quotaTone(pct);
   m10El.textContent = fmtUsd(q.spend_10m);
   h1El.textContent = fmtUsd(q.spend_1h);
-  d1El.textContent = fmtUsd(dayVal);
-  if (d1Lbl) d1Lbl.textContent = anchored ? "today" : "1d";
-  qpct.textContent = fmtPct(pct);
-  qfill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
-  qfill.className = `fill ${tone}`.trim();
-  qpct.className = `pct ${tone}`.trim();
-  const dailyLine = anchored
-    ? `since reset ${fmtPct(pct)}  ${fmtUsd(dayVal)} / ${fmtUsd(cap)} · resets in ${fmtCountdown(q.reset_in_secs)} (${q.daily_reset_utc}Z)`
-    : `daily ${fmtPct(pct)}  ${fmtUsd(dayVal)} / ${fmtUsd(cap)} (rolling 24h)`;
+
+  const day = pickLimit(q.limits, "daily");
+  const week = pickLimit(q.limits, "weekly");
+  const threeH = pickLimit(q.limits, "3h");
+  paintBar(dayFill, dayPct, day ? day.used_percent : q.daily_pct);
+  paintBar(weekFill, weekPct, week ? week.used_percent : null);
+
+  const extra = (q.limits || []).filter((l) => l.model_filter);
   chip.title = [
-    dailyLine,
-    `10m ${fmtUsd(q.spend_10m)} · 1h ${fmtUsd(q.spend_1h)} · 1d ${fmtUsd(q.spend_1d)}`,
-    "Pro 하루 한도 $6400 · 가재 최고속은 10분에 $100부터",
+    limitLine(day, "day"),
+    limitLine(week, "week"),
+    threeH ? limitLine(threeH, "3h") : null,
+    ...extra.map((l) => limitLine(l, l.limit_window)),
+    `10m ${fmtUsd(q.spend_10m)} · 1h ${fmtUsd(q.spend_1h)}`,
+    "한도는 GET /v1/usage/self limits · 가재 최고속은 10분에 $100부터",
     "드래그해서 이동 · 더블클릭 위치 리셋 · 우클릭 통계",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 window.addEventListener("DOMContentLoaded", async () => {

@@ -73,8 +73,8 @@ body.dragging {
   font-weight: 650;
   letter-spacing: 0.04em;
   color: var(--muted);
-  width: 24px;
-  flex: 0 0 24px;
+  width: 32px;
+  flex: 0 0 32px;
 }
 
 .val {

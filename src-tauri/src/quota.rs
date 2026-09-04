@@ -1,6 +1,18 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UsageLimit {
+    pub limit_type: String,
+    pub limit_window: String,
+    pub max_value: i64,
+    pub current_value: i64,
+    pub remaining_value: i64,
+    pub used_percent: f64,
+    pub model_filter: Option<String>,
+    pub reset_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct QuotaSnapshot {
     pub request_count: i64,
     pub total_tokens: i64,
@@ -12,6 +24,8 @@ pub struct QuotaSnapshot {
     pub cache_pct: f64,
     pub error: Option<String>,
     pub fetched_at: Option<u64>,
+    #[serde(default)]
+    pub limits: Vec<UsageLimit>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -20,6 +34,8 @@ struct UsageSelf {
     total_tokens: i64,
     cached_input_tokens: i64,
     total_cost_usd: f64,
+    #[serde(default)]
+    limits: Vec<UsageLimit>,
 }
 
 pub async fn fetch_usage(base_url: &str, api_key: &str) -> Result<QuotaSnapshot, String> {
@@ -69,6 +85,7 @@ pub async fn fetch_usage(base_url: &str, api_key: &str) -> Result<QuotaSnapshot,
         },
         error: None,
         fetched_at: Some(now_unix()),
+        limits: parsed.limits,
     })
 }
 

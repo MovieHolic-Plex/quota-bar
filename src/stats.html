@@ -206,8 +206,14 @@
         const dayPct = (dayCost / cap) * 100;
         const resetIn = anchored && s.next_reset_ts ? Math.max(0, s.next_reset_ts - Date.now() / 1000) : null;
         const resetLbl = resetIn == null ? "" : ` · 리셋까지 ${Math.floor(resetIn / 3600)}h${String(Math.floor((resetIn % 3600) / 60)).padStart(2, "0")}m`;
+        const limitCards = (L.limits || []).map((l) => {
+          const name = `${l.limit_window}${l.model_filter ? ` ${l.model_filter}` : ""}`;
+          const usd = (n) => fmtUsd((n || 0) / 1e6);
+          return [name, `${(l.used_percent || 0).toFixed(1)}% · ${usd(l.current_value)} / ${usd(l.max_value)}`];
+        });
         document.getElementById("cards").innerHTML = [
-          [anchored ? "하루 쿼터 (리셋 이후)" : "하루 쿼터 (최근 24h)", `${dayPct.toFixed(1)}% · ${fmtUsd(dayCost)} / ${fmtUsd(cap)}${resetLbl}`],
+          ...limitCards,
+          [anchored ? "SQLite 하루 (리셋 이후)" : "SQLite 하루 (최근 24h)", `${dayPct.toFixed(1)}% · ${fmtUsd(dayCost)} / ${fmtUsd(cap)}${resetLbl}`],
           ["토큰", fmtB(L.total_tokens)],
           ["캐시 토큰", fmtB(L.cached_input_tokens)],
           ["API 환산", fmtUsd(L.total_cost_usd)],
