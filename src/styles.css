@@ -61,6 +61,10 @@ body.dragging {
   gap: 2px;
 }
 
+.col.quota {
+  flex: 1.35;
+}
+
 .row {
   display: flex;
   align-items: center;
@@ -130,6 +134,10 @@ body.dragging {
 }
 
 .pct.hot {
+  color: #ff6b5a;
+}
+
+.val.hot {
   color: #ff6b5a;
 }
 

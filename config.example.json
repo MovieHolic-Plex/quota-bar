@@ -1,7 +1,7 @@
 {
   "base_url": "https://your-anthropic-compatible-proxy.example",
   "poll_interval_secs": 60,
-  "bar_width": 520,
+  "bar_width": 580,
   "pro_usd": 20,
   "daily_quota_usd": 6400,
   "daily_reset_utc": "06:34"

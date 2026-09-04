@@ -1,5 +1,7 @@
 const m10El = document.getElementById("m10");
 const h1El = document.getElementById("h1");
+const h3El = document.getElementById("h3");
+const fabEl = document.getElementById("fab");
 const dayFill = document.getElementById("dayFill");
 const dayPct = document.getElementById("dayPct");
 const weekFill = document.getElementById("weekFill");
@@ -51,8 +53,14 @@ function microUsd(n) {
   return (n || 0) / 1e6;
 }
 
-function pickLimit(limits, window) {
-  return (limits || []).find((l) => l.limit_window === window && !l.model_filter) || null;
+function pickLimit(limits, window, model) {
+  const want = model || null;
+  return (
+    (limits || []).find((l) => {
+      const mf = l.model_filter || null;
+      return l.limit_window === window && mf === want;
+    }) || null
+  );
 }
 
 function resetSecs(iso) {
@@ -82,7 +90,7 @@ function limitLine(l, label) {
 }
 
 function speedFromSpend(usd10) {
-  return 7 + heat(usd10) * 145;
+  return 7 + Math.max(0, usd10 || 0) * 1.45;
 }
 
 function circle(px, py, r, color) {
@@ -163,15 +171,24 @@ function tick(now) {
   last = now;
   const spd = speedFromSpend(spend10);
   const frenzy = heat(spend10);
-  x += dir * spd * dt;
   const minX = 16;
   const maxX = canvas.width - 22;
-  if (x > maxX) {
-    x = maxX;
-    dir = -1;
-  } else if (x < minX) {
-    x = minX;
-    dir = 1;
+  let dist = spd * dt;
+  let hops = 0;
+  while (dist > 0.0001 && hops++ < 48) {
+    const room = dir > 0 ? maxX - x : x - minX;
+    if (room <= 0) {
+      dir *= -1;
+      continue;
+    }
+    if (dist <= room) {
+      x += dir * dist;
+      dist = 0;
+    } else {
+      x = dir > 0 ? maxX : minX;
+      dir *= -1;
+      dist -= room;
+    }
   }
   drawCrawfish(now / 1000, frenzy);
   requestAnimationFrame(tick);
@@ -183,6 +200,8 @@ function apply(q) {
   if (q.error) {
     m10El.textContent = q.error;
     h1El.textContent = "";
+    h3El.textContent = "";
+    fabEl.textContent = "";
     paintBar(dayFill, dayPct, null);
     paintBar(weekFill, weekPct, null);
     dayPct.textContent = "";
@@ -199,21 +218,33 @@ function apply(q) {
   const day = pickLimit(q.limits, "daily");
   const week = pickLimit(q.limits, "weekly");
   const threeH = pickLimit(q.limits, "3h");
+  const fabDay = pickLimit(q.limits, "daily", "claude-fable-5");
   paintBar(dayFill, dayPct, day ? day.used_percent : q.daily_pct);
   paintBar(weekFill, weekPct, week ? week.used_percent : null);
+  paintRemain(h3El, threeH);
+  paintRemain(fabEl, fabDay);
 
-  const extra = (q.limits || []).filter((l) => l.model_filter);
   chip.title = [
     limitLine(day, "day"),
     limitLine(week, "week"),
-    threeH ? limitLine(threeH, "3h") : null,
-    ...extra.map((l) => limitLine(l, l.limit_window)),
+    limitLine(threeH, "3h"),
+    limitLine(fabDay, "fable daily"),
     `10m ${fmtUsd(q.spend_10m)} · 1h ${fmtUsd(q.spend_1h)}`,
-    "한도는 GET /v1/usage/self limits · 가재 최고속은 10분에 $100부터",
+    "가재 속도 = 10분 달러, 상한 없음",
     "드래그해서 이동 · 더블클릭 위치 리셋 · 우클릭 통계",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function paintRemain(el, limit) {
+  if (!limit) {
+    el.textContent = "--";
+    el.classList.remove("hot");
+    return;
+  }
+  el.textContent = fmtUsd(microUsd(limit.remaining_value));
+  el.classList.toggle("hot", (limit.used_percent || 0) >= 90 || (limit.remaining_value || 0) <= 0);
 }
 
 window.addEventListener("DOMContentLoaded", async () => {

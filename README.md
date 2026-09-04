@@ -42,11 +42,13 @@ Quota Bar는 그 숫자를 **작업 표시줄에 상주**시킵니다.
 
 | 자리 | 의미 |
 | :---: | --- |
-| 🦞 | 주황 가재. 10분 사용량이 오르면 더 빠르게, 더 신나게 기어 다닙니다 |
+| 🦞 | 주황 가재. 최근 10분 달러에 비례해 빨라집니다. 상한 없음 |
 | **10m** | 최근 10분의 API 환산 달러 |
 | **1h** | 최근 1시간 |
-| **day** | `limits` 의 전체 daily `used_percent` |
-| **week** | `limits` 의 전체 weekly `used_percent` |
+| **day** | 전체 daily `used_percent` |
+| **week** | 전체 weekly `used_percent` |
+| **3h** | 전체 3시간 한도의 **남은 $** |
+| **fab** | `claude-fable-5` daily 한도의 **남은 $** |
 
 시계 / TrafficMonitor 클러스터 **왼쪽**에 붙습니다. Windows 11이 작업 표시줄 자식 창을 덮어버려서, 이 앱은 작업 표시줄에 딱 붙인 **최상위 팝업**으로 살아 남습니다.
 
@@ -177,7 +179,7 @@ flowchart LR
 {
   "base_url": "https://your-anthropic-compatible-proxy.example",
   "poll_interval_secs": 60,
-  "bar_width": 520,
+  "bar_width": 580,
   "pro_usd": 20,
   "daily_quota_usd": 6400
 }
