@@ -8,7 +8,7 @@ use config::{
     store_api_key, AppConfig,
 };
 use db::{BucketRow, UsageStats};
-use quota::{fetch_usage, QuotaSnapshot};
+use quota::{fetch_usage, named_limits, NamedLimits, QuotaSnapshot};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -31,6 +31,10 @@ struct SettingsPatch {
     poll_interval_secs: u64,
     pro_usd: f64,
     #[serde(default)]
+    daily_quota_usd: Option<f64>,
+    #[serde(default)]
+    bar_width: Option<u32>,
+    #[serde(default)]
     daily_reset_utc: Option<String>,
     api_key: Option<String>,
 }
@@ -40,6 +44,7 @@ struct SettingsView {
     base_url: String,
     poll_interval_secs: u64,
     pro_usd: f64,
+    daily_quota_usd: f64,
     bar_width: u32,
     daily_reset_utc: Option<String>,
     has_key: bool,
@@ -50,6 +55,8 @@ struct SettingsView {
 struct BarView {
     #[serde(flatten)]
     snap: QuotaSnapshot,
+    #[serde(flatten)]
+    api: NamedLimits,
     minutes: Vec<BucketRow>,
     spend_10m: f64,
     spend_1h: f64,
@@ -88,8 +95,10 @@ fn bar_view(state: &AppState, snap: QuotaSnapshot) -> BarView {
     let (spend_10m, spend_1h, spend_1d) = db::recent_spend(&db).unwrap_or((0.0, 0.0, 0.0));
     let spend_since_reset = reset.map(|(last, _)| db::spend_since(&db, last).unwrap_or(0.0));
     let daily_pct = (spend_since_reset.unwrap_or(spend_1d) / daily_quota_usd) * 100.0;
+    let api = named_limits(&snap.limits);
     BarView {
         snap,
+        api,
         minutes,
         spend_10m,
         spend_1h,
@@ -131,10 +140,11 @@ async fn poll_once(app: &AppHandle, state: &AppState) -> QuotaSnapshot {
             snap
         }
         Err(err) => {
-            let snap = QuotaSnapshot {
-                error: Some(err),
-                ..Default::default()
-            };
+            // A dropped request says nothing about the quota, so keep the last
+            // good numbers and mark them stale instead of blanking the bar.
+            let mut snap = state.quota.lock().unwrap().clone();
+            snap.stale = snap.fetched_at.is_some();
+            snap.error = Some(err);
             *state.quota.lock().unwrap() = snap.clone();
             emit_quota(app, &bar_view(state, snap.clone()));
             snap
@@ -170,6 +180,7 @@ fn get_settings(state: State<AppState>) -> SettingsView {
         base_url: cfg.base_url,
         poll_interval_secs: cfg.poll_interval_secs,
         pro_usd: cfg.pro_usd,
+        daily_quota_usd: cfg.daily_quota_usd,
         bar_width: cfg.bar_width,
         daily_reset_utc: cfg.daily_reset_utc,
         has_key: has_api_key(),
@@ -178,23 +189,34 @@ fn get_settings(state: State<AppState>) -> SettingsView {
 }
 
 #[tauri::command]
-fn save_settings(state: State<AppState>, settings: SettingsPatch) -> Result<(), String> {
+fn save_settings(app: AppHandle, state: State<AppState>, settings: SettingsPatch) -> Result<(), String> {
     if let Some(key) = settings.api_key.as_deref() {
         if !key.trim().is_empty() {
             store_api_key(key)?;
         }
     }
-    let mut cfg = state.config.lock().unwrap();
-    cfg.base_url = settings.base_url.trim_end_matches('/').to_string();
-    cfg.poll_interval_secs = settings.poll_interval_secs.max(15);
-    cfg.pro_usd = if settings.pro_usd > 0.0 { settings.pro_usd } else { 20.0 };
-    if let Some(raw) = settings.daily_reset_utc.as_deref() {
-        if !raw.trim().is_empty() && normalize_reset(Some(raw)).is_none() {
-            return Err("Daily reset time must be HH:MM (UTC), e.g. 06:34".into());
+    {
+        let mut cfg = state.config.lock().unwrap();
+        cfg.base_url = settings.base_url.trim_end_matches('/').to_string();
+        cfg.poll_interval_secs = settings.poll_interval_secs.max(15);
+        cfg.pro_usd = if settings.pro_usd > 0.0 { settings.pro_usd } else { 20.0 };
+        if let Some(q) = settings.daily_quota_usd {
+            if q > 0.0 {
+                cfg.daily_quota_usd = q;
+            }
         }
+        if let Some(w) = settings.bar_width {
+            cfg.bar_width = w.clamp(280, 900);
+        }
+        if let Some(raw) = settings.daily_reset_utc.as_deref() {
+            if !raw.trim().is_empty() && normalize_reset(Some(raw)).is_none() {
+                return Err("Daily reset time must be HH:MM (UTC), e.g. 06:34".into());
+            }
+        }
+        cfg.daily_reset_utc = normalize_reset(settings.daily_reset_utc.as_deref());
+        save_config(&cfg)?;
     }
-    cfg.daily_reset_utc = normalize_reset(settings.daily_reset_utc.as_deref());
-    save_config(&cfg)?;
+    redock(&app);
     state.refresh.notify_one();
     Ok(())
 }
@@ -202,6 +224,21 @@ fn save_settings(state: State<AppState>, settings: SettingsPatch) -> Result<(), 
 #[tauri::command]
 fn refresh_now(state: State<AppState>) {
     state.refresh.notify_one();
+}
+
+#[tauri::command]
+fn nudge_bar_width(app: AppHandle, state: State<AppState>, dw: i32) -> Result<u32, String> {
+    let (width, offset) = {
+        let mut cfg = state.config.lock().unwrap();
+        let next = (cfg.bar_width as i32 + dw).clamp(280, 800) as u32;
+        cfg.bar_width = next;
+        save_config(&cfg)?;
+        (next, cfg.bar_offset_x)
+    };
+    if let Some(bar) = app.get_webview_window("bar") {
+        let _ = taskbar::dock_bar(&bar, width, offset);
+    }
+    Ok(width)
 }
 
 #[tauri::command]
@@ -273,6 +310,12 @@ fn get_stats(state: State<AppState>) -> Result<UsageStats, String> {
     if !live.limits.is_empty() {
         stats.latest.limits = live.limits.clone();
     }
+    // Surface a failing poll in the stats window too, without throwing away
+    // the figures it is drawing.
+    if live.error.is_some() {
+        stats.latest.error = live.error.clone();
+        stats.latest.stale = live.stale;
+    }
     Ok(stats)
 }
 
@@ -296,6 +339,7 @@ pub fn run() {
             refresh_now,
             begin_bar_drag,
             nudge_bar,
+            nudge_bar_width,
             end_bar_drag,
             reset_bar_position,
             open_settings,

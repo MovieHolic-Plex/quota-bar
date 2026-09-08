@@ -61,7 +61,7 @@ pub fn taskbar_geometry() -> Option<TaskbarGeom> {
 
 fn bar_rect(bar_width: u32, self_hwnd: isize, offset: Option<i32>) -> Option<BarPlacement> {
     let tb = taskbar_geometry()?;
-    let width = bar_width.min(tb.width.saturating_sub(16) as u32).max(300) as i32;
+    let width = bar_width.min(tb.width.saturating_sub(16) as u32).max(280) as i32;
     let height = tb.height.max(40);
     let max_off = (tb.width - width).max(0);
 
@@ -93,7 +93,7 @@ fn bar_rect(bar_width: u32, self_hwnd: isize, offset: Option<i32>) -> Option<Bar
 
 pub fn nudge_offset(current: Option<i32>, dx: i32, bar_width: u32) -> Option<i32> {
     let tb = taskbar_geometry()?;
-    let width = bar_width.min(tb.width.saturating_sub(16) as u32).max(300) as i32;
+    let width = bar_width.min(tb.width.saturating_sub(16) as u32).max(280) as i32;
     let max_off = (tb.width - width).max(0);
     let base = current.unwrap_or_else(|| {
         LAST_PLACE

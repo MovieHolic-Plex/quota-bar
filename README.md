@@ -40,15 +40,23 @@ Quota Bar는 그 숫자를 **작업 표시줄에 상주**시킵니다.
 
 ## 가재가 보여주는 것
 
+막대는 **먼저 막히는 것부터** 보여 줍니다.
+
 | 자리 | 의미 |
 | :---: | --- |
-| 🦞 | 주황 가재. 최근 10분 달러에 비례해 빨라집니다. 상한 없음 |
-| **10m** | 최근 10분의 API 환산 달러 |
-| **1h** | 최근 1시간 |
-| **day** | 전체 daily `used_percent` |
-| **week** | 전체 weekly `used_percent` |
-| **3h** | 전체 3시간 한도의 **남은 $** |
-| **fab** | `claude-fable-5` daily 한도의 **남은 $** |
+| 왼쪽 색 띠 | 지금 가장 위험한 한도의 색. 숫자를 읽지 않아도 곁눈으로 잡힙니다 |
+| 🦞 | 주황 가재. 최근 10분 달러에 비례해 빨라집니다 |
+| **윗줄** | 지금 속도로 **가장 먼저 바닥나는** 한도 + 사용률 + 리셋까지 |
+| **아랫줄** | 가장 긴 창(보통 `week`)의 한도 + 사용률 + 남은 $ |
+| 막대 위 흰 눈금 | 창을 고르게 썼다면 지금쯤 있어야 할 위치. 막대가 눈금보다 앞서면 과속입니다 |
+| 오른쪽 스파크라인 | 최근 30분의 분당 지출. 막대 너비 430px 이상에서 나타납니다 |
+
+색은 오직 사용률만 뜻합니다.
+초록 `OK` (60% 미만) · 노랑 `Warn` (60%) · 주황 `High` (85%) · 빨강 `Full` (100%).
+
+UI 문구는 프록시 API 용어를 그대로 씁니다. 창 이름은 `3h` · `daily` · `weekly`,
+가장 먼저 바닥나는 한도는 **binding limit**, 시간당 소비는 **burn rate**,
+막대 위 흰 눈금은 **pace marker** 입니다.
 
 시계 / TrafficMonitor 클러스터 **왼쪽**에 붙습니다. Windows 11이 작업 표시줄 자식 창을 덮어버려서, 이 앱은 작업 표시줄에 딱 붙인 **최상위 팝업**으로 살아 남습니다.
 
@@ -96,6 +104,7 @@ npm run build
 | 동작 | 결과 |
 | --- | --- |
 | 드래그 | 작업 표시줄 위를 따라 이동, 위치 기억 |
+| 휠 | 바 너비 조절 (280–800px) |
 | 더블클릭 | 시계 옆 기본 자리로 스냅 |
 | 클릭 (드래그 없이) | 지금 바로 새로고침 |
 | 우클릭 | 통계 창 |
@@ -105,15 +114,20 @@ npm run build
 
 ## 통계 창
 
+막대를 우클릭하면 열립니다. 맨 위 한 줄이 결론이고, 그 아래 큰 차트가 본문입니다.
+
+| 구획 | 내용 |
+| --- | --- |
+| (맨 위 띠) | binding limit 한 줄. 사용률, 남은 금액, 리셋까지, 그리고 “Empties in 1h 47m at the current rate, 24m before reset” |
+| **Usage over time** | 창의 주인공. 30m · 48h · 30d × Cost · Tokens · Requests. 막대에 올리면 그 구간 값이 위에 뜹니다 |
+| **Limits** | 프록시가 준 **모든** 한도를 한 줄씩. pace marker 와 `vs pace` (`+34%p` 면 과속) |
+| **Burn rate** | 10분 / 1시간 / 24시간 지출과 시간당 환산, 리셋 이후 누적 |
+| **Windows** | 스냅샷 **델타**로 만든 표. 기록이 구간보다 짧으면 `partial` 로 표시합니다 |
+| **Lifetime** | List price − 구독료 = Savings (Settings에서 변경, 기본 `$20`) |
+
 폴이 성공할 때마다 SQLite에 한 줄씩 쌓입니다.
 
 `%APPDATA%\quotabar\quota-bar\usage.db`
-
-| 구간 | 내용 |
-| --- | --- |
-| 1h / 5h / 24h / 7d / 30d / all | 스냅샷 **델타**로 만든 요청·토큰·캐시·비용 |
-| 시간 / 일 차트 | 같은 델타를 막대로 |
-| 이득 | API 정가 환산 − Claude Pro 월 요금 (Settings에서 변경, 기본 `$20`) |
 
 켜 둘수록 통계가 진짜가 됩니다. 켜지 않은 구간은 비어 있습니다.
 
@@ -163,7 +177,11 @@ flowchart LR
 
 | 층 | 역할 |
 | --- | --- |
-| `src/` | 가재 캔버스, 설정, 통계 UI |
+| `src/theme.css` | 색·간격·미터 등 세 창이 공유하는 디자인 토큰 |
+| `src/common.js` | 한도 정규화, 페이스·소진 예측, 숫자 포맷 (세 창 공용) |
+| `src/index.html` · `main.js` · `styles.css` | 작업 표시줄 막대와 가재 캔버스 |
+| `src/stats.html` · `stats.js` · `stats.css` | 통계 창 |
+| `src/settings.html` | 설정 창 |
 | `src-tauri/src/taskbar.rs` | Win32로 작업 표시줄에 도킹 |
 | `src-tauri/src/quota.rs` | usage/self 조회, 키 문자열 마스킹 |
 | `src-tauri/src/db.rs` | 스냅샷 적재와 구간 합산 |
@@ -179,11 +197,14 @@ flowchart LR
 {
   "base_url": "https://your-anthropic-compatible-proxy.example",
   "poll_interval_secs": 60,
-  "bar_width": 580,
+  "bar_width": 560,
   "pro_usd": 20,
-  "daily_quota_usd": 6400
+  "daily_quota_usd": 6400,
+  "daily_reset_utc": "06:34"
 }
 ```
+
+`pro_usd` · `daily_quota_usd` · `daily_reset_utc` 는 Settings 창에서도 바꿀 수 있습니다.
 
 ---
 

@@ -64,7 +64,7 @@ fn default_model() -> String {
 }
 
 fn default_bar_width() -> u32 {
-    580
+    340
 }
 
 fn default_pro_usd() -> f64 {
@@ -100,6 +100,13 @@ pub fn load_config() -> AppConfig {
     }
     if cfg.bar_width < 280 {
         cfg.bar_width = 280;
+    }
+    if cfg.bar_width > 900 {
+        cfg.bar_width = 900;
+    }
+    // Previous defaults that no longer match the compact layout.
+    if cfg.bar_width == 580 || cfg.bar_width == 720 || cfg.bar_width == 460 {
+        cfg.bar_width = default_bar_width();
     }
     if cfg.pro_usd <= 0.0 {
         cfg.pro_usd = default_pro_usd();

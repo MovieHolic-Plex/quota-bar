@@ -24,8 +24,75 @@ pub struct QuotaSnapshot {
     pub cache_pct: f64,
     pub error: Option<String>,
     pub fetched_at: Option<u64>,
+    /// True when `error` is set but the figures are a retained copy of the
+    /// last successful poll. A dropped request should not blank the readout.
+    #[serde(default)]
+    pub stale: bool,
     #[serde(default)]
     pub limits: Vec<UsageLimit>,
+}
+
+/// `/v1/usage/self` stores cost as microdollars (USD × 1_000_000).
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct LimitView {
+    pub window: String,
+    pub model_filter: Option<String>,
+    pub used_percent: f64,
+    pub current_usd: f64,
+    pub max_usd: f64,
+    pub remaining_usd: f64,
+    pub reset_at: String,
+}
+
+pub fn usd_from_micro(v: i64) -> f64 {
+    v as f64 / 1_000_000.0
+}
+
+pub fn is_fable(mf: &Option<String>) -> bool {
+    mf.as_deref()
+        .map(|s| s.to_ascii_lowercase().contains("fable"))
+        .unwrap_or(false)
+}
+
+pub fn pick_limit<'a>(
+    limits: &'a [UsageLimit],
+    window: &str,
+    fable: bool,
+) -> Option<&'a UsageLimit> {
+    limits.iter().find(|l| {
+        l.limit_window.eq_ignore_ascii_case(window) && is_fable(&l.model_filter) == fable
+    })
+}
+
+pub fn to_view(l: &UsageLimit) -> LimitView {
+    LimitView {
+        window: l.limit_window.clone(),
+        model_filter: l.model_filter.clone(),
+        used_percent: l.used_percent,
+        current_usd: usd_from_micro(l.current_value),
+        max_usd: usd_from_micro(l.max_value),
+        remaining_usd: usd_from_micro(l.remaining_value),
+        reset_at: l.reset_at.clone(),
+    }
+}
+
+pub fn named_limits(limits: &[UsageLimit]) -> NamedLimits {
+    NamedLimits {
+        three_h: pick_limit(limits, "3h", false).map(to_view),
+        daily: pick_limit(limits, "daily", false).map(to_view),
+        weekly: pick_limit(limits, "weekly", false).map(to_view),
+        fable_daily: pick_limit(limits, "daily", true).map(to_view),
+        fable_weekly: pick_limit(limits, "weekly", true).map(to_view),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct NamedLimits {
+    pub three_h: Option<LimitView>,
+    pub daily: Option<LimitView>,
+    pub weekly: Option<LimitView>,
+    pub fable_daily: Option<LimitView>,
+    pub fable_weekly: Option<LimitView>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,6 +152,7 @@ pub async fn fetch_usage(base_url: &str, api_key: &str) -> Result<QuotaSnapshot,
         },
         error: None,
         fetched_at: Some(now_unix()),
+        stale: false,
         limits: parsed.limits,
     })
 }
