@@ -48,6 +48,47 @@
   }
 
   /* ── binding limit strip ─────────────────────────────────────────────*/
+  function renderTokens() {
+    var L = (state.stats && state.stats.latest) || {};
+    var mix = QB.tokenMix(L);
+    if (!mix) {
+      el("secTokens").hidden = true;
+      return;
+    }
+    el("secTokens").hidden = false;
+    var tiles = [
+      { k: "Total", v: QB.tokens(mix.total), sub: "lifetime, input plus output" },
+      { k: "Cached input", v: QB.tokens(mix.cachedInput), sub: QB.pct(mix.cacheShare) + " of all tokens" },
+      { k: "Everything else", v: QB.tokens(mix.other), sub: "uncached input + output" },
+      {
+        k: "Per request",
+        v: mix.perRequest == null ? "—" : QB.tokens(mix.perRequest),
+        sub: mix.perRequest == null ? "no requests yet" : QB.int(L.request_count) + " requests"
+      },
+      {
+        k: "List price / 1M tok",
+        v: mix.usdPerMillion == null ? "—" : QB.usd(mix.usdPerMillion),
+        sub: "lifetime cost ÷ lifetime tokens"
+      }
+    ];
+    el("tokenTiles").innerHTML = tiles
+      .map(function (t) {
+        return (
+          '<div class="tile"><div class="tile__k">' +
+          esc(t.k) +
+          '</div><div class="tile__v num">' +
+          esc(t.v) +
+          '</div><div class="tile__sub num">' +
+          esc(t.sub) +
+          "</div></div>"
+        );
+      })
+      .join("");
+    el("tokenMix").hidden = mix.total <= 0;
+    el("tokenMixCached").style.width =
+      mix.total > 0 ? Math.min(100, mix.cacheShare).toFixed(2) + "%" : "0%";
+  }
+
   function renderBind() {
     var host = el("bind");
     var limits = state.limits;
@@ -206,9 +247,9 @@
     });
 
     if (s.since_reset) {
-      var cap = s.daily_quota_usd || 0;
+      var cap = QB.dailyCapUsd(state.limits, s.daily_quota_usd);
       var used = s.since_reset.cost_usd || 0;
-      var share = cap > 0 ? (used / cap) * 100 : null;
+      var share = cap != null ? (used / cap) * 100 : null;
       tiles.push({
         k: "Since reset",
         v: QB.usd(used),
@@ -542,7 +583,7 @@
       },
       { k: "Requests", v: QB.int(L.request_count), sub: "counted by the proxy" },
       { k: "Tokens", v: QB.tokens(L.total_tokens), sub: "input plus output" },
-      { k: "Cache hit", v: QB.pct(L.cache_pct), sub: "higher means more per dollar" }
+      { k: "Cached input / all tokens", v: QB.pct(L.cache_pct), sub: "not an input-only cache hit rate" }
     ];
     el("totalTiles").innerHTML = tiles
       .map(function (t) {
@@ -605,11 +646,12 @@
       renderLimitRows();
 
       el("empty").hidden = !noData;
-      ["secBurn", "secChart", "secBands", "secTotal"].forEach(function (id) {
+      ["secTokens", "secBurn", "secChart", "secBands", "secTotal"].forEach(function (id) {
         el(id).hidden = noData;
       });
 
       if (!noData) {
+        renderTokens();
         renderBurn();
         renderChart();
         renderBands();

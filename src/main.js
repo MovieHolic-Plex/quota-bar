@@ -278,7 +278,8 @@
         " · 24h " +
         QB.usd(payload.spend_1d)
     );
-    if (burn > 0) lines.push("Currently " + QB.usd(burn) + "/h — this is what sets the crawfish speed.");
+    if (burn > 0) lines.push("Currently " + QB.usd(burn) + "/h — this is what the forecast uses.");
+    lines.push("Crawfish speed follows the last 10 minutes (" + QB.usd(payload.spend_10m) + ").");
     lines.push("");
     lines.push("Drag to move · wheel to resize · double-click to reset · click to refresh · right-click for stats");
     return lines.join("\n");

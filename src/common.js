@@ -217,9 +217,12 @@
     return out;
   }
 
-  /* Hours of headroom left at the current burn rate. */
+  /* Hours of headroom left at the current burn rate.
+     Fable remaining must not be divided by all-model $/h: fable is a subset
+     of the all-models window, and the snapshot delta does not split it. */
   function hoursToEmpty(limit, burnPerHour) {
-    if (!limit || !isNum(burnPerHour) || burnPerHour <= 0) return null;
+    if (!limit || limit.fable) return null;
+    if (!isNum(burnPerHour) || burnPerHour <= 0) return null;
     if (limit.left <= 0) return 0;
     return limit.left / burnPerHour;
   }
@@ -253,6 +256,12 @@
           limit.resetIn != null
             ? "Blocked until it resets in " + dur(limit.resetIn, "long") + "."
             : "Limit fully used."
+      };
+    }
+    if (limit.fable) {
+      return {
+        tone: "none",
+        text: "Fable remaining is not projected from all-model burn."
       };
     }
     var h = hoursToEmpty(limit, burnPerHour);
@@ -313,6 +322,36 @@
     }, 0);
   }
 
+  /* /v1/usage/self reports lifetime total_tokens and cached_input_tokens only.
+     There is no input/output split on this endpoint. */
+  function tokenMix(snap) {
+    if (!snap) return null;
+    var total = snap.total_tokens;
+    var cached = snap.cached_input_tokens;
+    if (!isNum(total) || total < 0) return null;
+    if (!isNum(cached) || cached < 0) cached = 0;
+    var reqs = snap.request_count;
+    var cost = snap.total_cost_usd;
+    return {
+      total: total,
+      cachedInput: cached,
+      other: Math.max(0, total - cached),
+      cacheShare: total > 0 ? (cached / total) * 100 : 0,
+      perRequest: isNum(reqs) && reqs > 0 ? total / reqs : null,
+      usdPerMillion: isNum(cost) && total > 0 ? cost / (total / 1e6) : null
+    };
+  }
+
+  /* Prefer the proxy's daily all-models max over the hand-typed Settings cap. */
+  function dailyCapUsd(limits, fallback) {
+    var i;
+    for (i = 0; i < (limits || []).length; i++) {
+      var l = limits[i];
+      if (l && !l.fable && l.window === "daily" && isNum(l.max) && l.max > 0) return l.max;
+    }
+    return isNum(fallback) && fallback > 0 ? fallback : null;
+  }
+
   global.QB = {
     WINDOW_SECS: WINDOW_SECS,
     usd: usd,
@@ -334,6 +373,8 @@
     paceNote: paceNote,
     paceDeltaLabel: paceDeltaLabel,
     densify: densify,
-    sum: sum
+    sum: sum,
+    tokenMix: tokenMix,
+    dailyCapUsd: dailyCapUsd
   };
 })(window);

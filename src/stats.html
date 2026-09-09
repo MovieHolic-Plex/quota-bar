@@ -26,6 +26,25 @@
       <!-- ── binding limit: one strip, not a whole screen ───────────────── -->
       <div class="bind t-none" id="bind"></div>
 
+      <!-- ── tokens: what /v1/usage/self actually reports ──────────── -->
+      <section id="secTokens">
+        <div class="sec-head">
+          <h2>Tokens</h2>
+          <span class="hint">
+            The proxy reports a lifetime total and cached input only — not input vs output.
+            Cached share is cached input ÷ all tokens.
+          </span>
+        </div>
+        <div class="tiles" id="tokenTiles"></div>
+        <div class="tokenmix" id="tokenMix" hidden>
+          <div class="tokenmix__bar"><i id="tokenMixCached"></i></div>
+          <div class="tokenmix__leg">
+            <span><i class="tokenmix__swatch is-cached"></i> cached input</span>
+            <span><i class="tokenmix__swatch is-other"></i> uncached input + output</span>
+          </div>
+        </div>
+      </section>
+
       <!-- ── the chart is the page ──────────────────────────────────────── -->
       <section id="secChart">
         <div class="sec-head">
@@ -105,7 +124,7 @@
                 <th>Per hour</th>
                 <th>Requests</th>
                 <th>Tokens</th>
-                <th>Cache hit</th>
+                <th>Cached / all</th>
               </tr>
             </thead>
             <tbody id="bands"></tbody>

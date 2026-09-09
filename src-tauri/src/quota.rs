@@ -44,7 +44,7 @@ pub struct LimitView {
     pub reset_at: String,
 }
 
-pub fn usd_from_micro(v: i64) -> f64 {
+pub const fn usd_from_micro(v: i64) -> f64 {
     v as f64 / 1_000_000.0
 }
 
@@ -169,5 +169,70 @@ fn redact(input: &str, secret: &str) -> String {
         input.to_string()
     } else {
         input.replace(secret, "***")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn limit(window: &str, fable: bool, current: i64, max: i64) -> UsageLimit {
+        UsageLimit {
+            limit_type: "cost_usd".into(),
+            limit_window: window.into(),
+            max_value: max,
+            current_value: current,
+            remaining_value: max - current,
+            used_percent: current as f64 / max as f64 * 100.0,
+            model_filter: if fable {
+                Some("fable".into())
+            } else {
+                None
+            },
+            reset_at: "2026-09-10T06:34:30.940247".into(),
+        }
+    }
+
+    #[test]
+    fn usd_from_micro_divides_by_a_million() {
+        assert!((usd_from_micro(5_600_000_000) - 5600.0).abs() < 1e-9);
+        assert!((usd_from_micro(268_211_260) - 268.21126).abs() < 1e-9);
+    }
+
+    #[test]
+    fn pick_limit_separates_fable_from_all_models() {
+        let limits = vec![
+            limit("daily", false, 268_211_260, 5_600_000_000),
+            limit("daily", true, 791_421, 2_800_000_000),
+            limit("3h", false, 268_211_260, 3_500_000_000),
+        ];
+        let daily = pick_limit(&limits, "daily", false).unwrap();
+        assert_eq!(daily.max_value, 5_600_000_000);
+        let fable_daily = pick_limit(&limits, "daily", true).unwrap();
+        assert_eq!(fable_daily.max_value, 2_800_000_000);
+        assert!(pick_limit(&limits, "weekly", false).is_none());
+    }
+
+    #[test]
+    fn named_limits_maps_the_live_payload_shape() {
+        let limits = vec![
+            limit("3h", false, 1, 10),
+            limit("daily", false, 2, 20),
+            limit("weekly", false, 3, 30),
+            limit("daily", true, 4, 40),
+            limit("weekly", true, 5, 50),
+        ];
+        let named = named_limits(&limits);
+        assert_eq!(named.three_h.unwrap().max_usd, usd_from_micro(10));
+        assert_eq!(named.daily.unwrap().max_usd, usd_from_micro(20));
+        assert_eq!(named.weekly.unwrap().max_usd, usd_from_micro(30));
+        assert_eq!(named.fable_daily.unwrap().max_usd, usd_from_micro(40));
+        assert_eq!(named.fable_weekly.unwrap().max_usd, usd_from_micro(50));
+    }
+
+    #[test]
+    fn redact_strips_the_api_key_from_error_text() {
+        assert_eq!(redact("boom sk-ant-secret here", "sk-ant-secret"), "boom *** here");
+        assert_eq!(redact("no secret", ""), "no secret");
     }
 }

@@ -489,6 +489,46 @@ section {
   color: var(--crit);
 }
 
+.tokenmix {
+  margin-top: 10px;
+}
+.tokenmix__bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.tokenmix__bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--brand);
+}
+.tokenmix__leg {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 7px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.tokenmix__swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.tokenmix__swatch.is-cached {
+  background: var(--brand);
+}
+.tokenmix__swatch.is-other {
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
 /* ── tabs ──────────────────────────────────────────────────────────────*/
 .tabs {
   display: inline-flex;
