@@ -105,12 +105,54 @@ struct UsageSelf {
     limits: Vec<UsageLimit>,
 }
 
-pub async fn fetch_usage(base_url: &str, api_key: &str) -> Result<QuotaSnapshot, String> {
+/// A failed read. `status` is set when the proxy answered, so a refusal
+/// (401/403/429) can be told apart from a dropped connection — only the
+/// former says anything about the key.
+#[derive(Debug, Clone)]
+pub struct FetchError {
+    pub status: Option<u16>,
+    pub message: String,
+}
+
+impl FetchError {
+    fn net(message: String) -> Self {
+        Self { status: None, message }
+    }
+
+    /// The proxy refused this key, as opposed to the request not landing.
+    pub fn is_refusal(&self) -> bool {
+        matches!(self.status, Some(401 | 402 | 403 | 429))
+    }
+}
+
+impl std::fmt::Display for FetchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+/// Highest all-model used %. Fable limits are left out: a full fable window
+/// only blocks fable, and the key still serves every other model.
+pub fn peak_all_model_pct(limits: &[UsageLimit]) -> Option<f64> {
+    limits
+        .iter()
+        .filter(|l| !is_fable(&l.model_filter))
+        .map(|l| {
+            if l.max_value > 0 && l.remaining_value <= 0 {
+                100.0
+            } else {
+                l.used_percent
+            }
+        })
+        .fold(None, |acc: Option<f64>, v| Some(acc.map_or(v, |a| a.max(v))))
+}
+
+pub async fn fetch_usage(base_url: &str, api_key: &str) -> Result<QuotaSnapshot, FetchError> {
     let url = format!("{}/v1/usage/self", base_url.trim_end_matches('/'));
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| FetchError::net(e.to_string()))?;
 
     let response = client
         .get(url)
@@ -119,23 +161,26 @@ pub async fn fetch_usage(base_url: &str, api_key: &str) -> Result<QuotaSnapshot,
         .header("anthropic-version", "2023-06-01")
         .send()
         .await
-        .map_err(|e| redact(&e.to_string(), api_key))?;
+        .map_err(|e| FetchError::net(redact(&e.to_string(), api_key)))?;
 
     let status = response.status();
     let text = response
         .text()
         .await
-        .map_err(|e| redact(&e.to_string(), api_key))?;
+        .map_err(|e| FetchError::net(redact(&e.to_string(), api_key)))?;
     if !status.is_success() {
-        return Err(format!(
-            "HTTP {} {}",
-            status.as_u16(),
-            redact(&text.chars().take(180).collect::<String>(), api_key)
-        ));
+        return Err(FetchError {
+            status: Some(status.as_u16()),
+            message: format!(
+                "HTTP {} {}",
+                status.as_u16(),
+                redact(&text.chars().take(180).collect::<String>(), api_key)
+            ),
+        });
     }
 
-    let parsed: UsageSelf =
-        serde_json::from_str(&text).map_err(|e| format!("usage/self parse: {e}"))?;
+    let parsed: UsageSelf = serde_json::from_str(&text)
+        .map_err(|e| FetchError::net(format!("usage/self parse: {e}")))?;
 
     Ok(QuotaSnapshot {
         request_count: parsed.request_count,
@@ -228,6 +273,20 @@ mod tests {
         assert_eq!(named.weekly.unwrap().max_usd, usd_from_micro(30));
         assert_eq!(named.fable_daily.unwrap().max_usd, usd_from_micro(40));
         assert_eq!(named.fable_weekly.unwrap().max_usd, usd_from_micro(50));
+    }
+
+    #[test]
+    fn peak_ignores_fable_and_treats_empty_remaining_as_full() {
+        let limits = vec![
+            limit("daily", false, 40, 100),
+            limit("weekly", false, 70, 100),
+            limit("daily", true, 100, 100),
+        ];
+        assert_eq!(peak_all_model_pct(&limits), Some(70.0));
+        let mut full = limit("3h", false, 99, 100);
+        full.remaining_value = 0;
+        assert_eq!(peak_all_model_pct(&[full]), Some(100.0));
+        assert_eq!(peak_all_model_pct(&[]), None);
     }
 
     #[test]

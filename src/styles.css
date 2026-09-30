@@ -150,10 +150,14 @@ body.dragging {
 }
 
 .bar__spark-cap {
+  max-width: 96px;
   font-size: 9px;
   font-weight: 650;
   color: var(--faint);
   line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bar.is-narrow .bar__spark {

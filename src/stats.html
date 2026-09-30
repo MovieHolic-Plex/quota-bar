@@ -15,7 +15,9 @@
           <p class="top__sub">Limits reported by the proxy, and spend recorded by this app</p>
         </div>
         <div class="top__spacer"></div>
+        <span class="tabs" id="keyTabs" hidden title="Which key's history to show"></span>
         <span class="stamp" id="stamp"></span>
+        <button class="btn" id="openSettings" title="Keys, failover and Claude Code settings">Settings</button>
         <button class="btn" id="refresh">Refresh</button>
       </header>
 
@@ -25,6 +27,17 @@
 
       <!-- ── binding limit: one strip, not a whole screen ───────────────── -->
       <div class="bind t-none" id="bind"></div>
+
+      <!-- ── keys: every stored key at a glance ─────────────────────── -->
+      <section id="secKeys" hidden>
+        <div class="sec-head">
+          <h2>Keys</h2>
+          <span class="hint">
+            Every key is read on each poll, in failover order. Click one to show its history below.
+          </span>
+        </div>
+        <div class="rows" id="keyRows"></div>
+      </section>
 
       <!-- ── tokens: what /v1/usage/self actually reports ──────────── -->
       <section id="secTokens">

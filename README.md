@@ -90,10 +90,10 @@ npm run build
 
 ### 처음 한 번만
 
-1. 트레이 아이콘 → **Settings**
-2. Anthropic 호환 **Base URL** 입력
-3. API 키 입력 후 저장  
-   키는 Windows **자격 증명 관리자**에만 들어갑니다. 입력칸을 비우고 저장하면 기존 키를 유지합니다.
+1. 트레이 아이콘 → **Settings** (막대를 가운데 버튼으로 눌러도 열립니다)
+2. **General** 에서 Anthropic 호환 **Base URL** 입력
+3. **Keys** 에서 API 키 추가  
+   키는 Windows **자격 증명 관리자**에만 들어갑니다. 여러 개를 넣으면 위에서부터가 failover 순서입니다.
 
 이 저장소에는 `.env` 도, 예시 키도, 실제 키도 **없습니다.**
 
@@ -108,6 +108,7 @@ npm run build
 | 더블클릭 | 시계 옆 기본 자리로 스냅 |
 | 클릭 (드래그 없이) | 지금 바로 새로고침 |
 | 우클릭 | 통계 창 |
+| 가운데 클릭 | 설정 창 |
 | 트레이 | Show bar · Stats · Refresh · Reset position · Settings · Quit |
 
 ---
@@ -133,15 +134,35 @@ npm run build
 
 ---
 
+## 키 여러 개와 failover
+
+Settings → **Keys** 에서 키를 여러 개 넣어 둘 수 있습니다.
+
+- 폴링마다 **모든 키**의 `/v1/usage/self` 를 읽습니다. 카드마다 3h · daily · weekly · Fable 한도가 보입니다.
+- **Show / Copy** 로 전체 키를 보거나 복사합니다. 펼친 키는 30초 뒤 다시 가려집니다.
+- 지금 쓰는 키(**LIVE**)가 401/403/429를 받거나, all-model 한도가 임계값(기본 98%)에 닿으면 순서상 다음 **건강한** 키로 넘어갑니다. Fable 전용 한도는 전환 조건이 아닙니다.
+- **Fail back** 을 켜 두면, 윗순위 키가 임계값보다 10%p 이상 여유를 되찾았을 때 그 키로 돌아갑니다.
+- 전환되면 막대에 `↪ Switched to …` 가 몇 초 뜨고, 툴팁과 통계 창에 이유가 남습니다.
+
+## Claude Code 설정 (이 PC · 원격 서버)
+
+Settings → **Claude Code** 에서 `~/.claude/settings.json` 을 직접 고칩니다.
+
+- 대상: **This PC**, 그리고 `user@host` 로 추가한 SSH 머신(예: `main@mdc-server`). 자신의 `ssh` 와 `~/.ssh/config` 를 키 인증(BatchMode)으로만 씁니다.
+- 건드리는 것은 `env` 의 `ANTHROPIC_BASE_URL` · `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` · `ANTHROPIC_DEFAULT_{OPUS,SONNET,FABLE,HAIKU}_MODEL` 과 최상위 `model` 뿐입니다. hooks 등 나머지는 순서까지 그대로 둡니다.
+- 쓰기 전에 옆에 `settings.json.quotabar-bak`(직전본)과 `settings.json.quotabar-orig`(처음 한 번)를 남깁니다.
+- **Follow the live key** 를 켠 대상은 failover가 키를 바꿀 때 키와 Base URL이 같이 바뀝니다. 이미 떠 있는 Claude 세션은 다음 실행부터 새 키를 씁니다.
+- 각 키 카드에는 그 키를 쓰고 있는 머신이 표시됩니다.
+
 ## 키는 저장소에 없습니다
 
 이 레포를 클론해도 키는 따라오지 않습니다.
 
 | 항목 | 어디에 있나 | 깃헙에 올라가나요 |
 | --- | --- | :---: |
-| API 키 | Windows 자격 증명 관리자 `dev.quotabar.desktop` / `api-key` | 아니오 |
+| API 키 | Windows 자격 증명 관리자 `dev.quotabar.desktop` / 키 id (첫 키는 `api-key`) | 아니오 |
 | `.env` | **쓰지 않습니다.** 예시 파일도 없습니다 | 아니오 |
-| 설정 | `%APPDATA%\quotabar\quota-bar\config.json` (URL·간격·위치만) | 아니오 |
+| 설정 | `%APPDATA%\quotabar\quota-bar\config.json` (URL·간격·위치·키 이름/순서·대상 호스트) | 아니오 |
 | 사용량 DB | `%APPDATA%\quotabar\quota-bar\usage.db` | 아니오 |
 | 에러 로그 | 키 문자열이 섞이면 `***` 로 지웁니다 | — |
 
@@ -157,7 +178,7 @@ Settings의 Daily reset time은 SQLite 통계용 보조 값입니다.
 
 ## 폴링
 
-기본 **60초**마다 `GET /v1/usage/self` 한 번.  
+기본 **60초**마다 키마다 `GET /v1/usage/self` 한 번.  
 메시지 생성 프로브(`POST /v1/messages`)는 보내지 않습니다.  
 간격은 Settings의 Poll interval 에서 바꿀 수 있고, 최솟값은 15초입니다.
 
@@ -181,11 +202,13 @@ flowchart LR
 | `src/common.js` | 한도 정규화, 페이스·소진 예측, 숫자 포맷 (세 창 공용) |
 | `src/index.html` · `main.js` · `styles.css` | 작업 표시줄 막대와 가재 캔버스 |
 | `src/stats.html` · `stats.js` · `stats.css` | 통계 창 |
-| `src/settings.html` | 설정 창 |
+| `src/settings.html` · `settings.js` · `settings.css` | 설정 창 (Keys · Claude Code · General) |
 | `src-tauri/src/taskbar.rs` | Win32로 작업 표시줄에 도킹 |
 | `src-tauri/src/quota.rs` | usage/self 조회, 키 문자열 마스킹 |
 | `src-tauri/src/db.rs` | 스냅샷 적재와 구간 합산 |
 | `src-tauri/src/config.rs` | 설정 파일 + Credential Manager |
+| `src-tauri/src/keys.rs` | 키 상태 판정과 failover 선택 |
+| `src-tauri/src/claude_cfg.rs` | Claude Code `settings.json` 읽기/패치 (로컬 · SSH) |
 
 ---
 

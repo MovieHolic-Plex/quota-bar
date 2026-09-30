@@ -560,6 +560,91 @@ section {
   color: var(--text);
 }
 
+/* ── keys ──────────────────────────────────────────────────────────────
+   One row per key, same grammar as the limit rows. */
+.krow {
+  display: grid;
+  grid-template-columns: 22px minmax(120px, 1.2fr) repeat(3, minmax(84px, 1fr)) minmax(90px, 0.9fr) minmax(110px, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 9px 15px;
+  cursor: pointer;
+}
+.krow + .krow {
+  border-top: 1px solid var(--line-soft);
+}
+.krow:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+.krow.is-shown {
+  background: rgba(255, 122, 34, 0.06);
+}
+.krow.is-head {
+  cursor: default;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--faint);
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.krow__rank {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 750;
+}
+.krow.is-live .krow__rank {
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+.krow__name {
+  display: grid;
+  min-width: 0;
+}
+.krow__name b {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.krow__name span {
+  font-size: 11px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kcell {
+  display: grid;
+  gap: 3px;
+}
+.kcell__pct {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--tone, var(--text));
+}
+.kcell .meter {
+  height: 4px;
+}
+.kcell__none {
+  color: var(--faint);
+  font-size: 12px;
+}
+.krow__used {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── table ─────────────────────────────────────────────────────────────*/
 .tablebox {
   border: 1px solid var(--line);

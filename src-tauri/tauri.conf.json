@@ -32,14 +32,14 @@
         "label": "settings",
         "title": "Quota Bar Settings",
         "url": "settings.html",
-        "width": 470,
-        "height": 700,
+        "width": 780,
+        "height": 800,
         "resizable": true,
         "visible": false,
         "skipTaskbar": false,
         "center": true,
-        "minWidth": 420,
-        "minHeight": 520
+        "minWidth": 660,
+        "minHeight": 560
       },
       {
         "label": "stats",

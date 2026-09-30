@@ -20,6 +20,7 @@
   var TONES = ["t-ok", "t-warn", "t-hot", "t-crit", "t-none"];
 
   var spend10 = 0;
+  var needsSetup = false;
   var minutes = [];
   var bugX = 20;
   var bugDir = 1;
@@ -27,8 +28,14 @@
 
   /* ── canvas sizing ───────────────────────────────────────────────────
      The taskbar can sit on a 100%, 125% or 150% display. Size the backing
-     store to device pixels or the crawfish turns to mush. */
-  function fitCanvas(canvas, ctx) {
+     store to device pixels or the crawfish turns to mush.
+
+     Measured on demand rather than per frame: getBoundingClientRect() forces
+     a layout, and the bar only changes size when the user resizes it. */
+  var bugBox = { w: 1, h: 1 };
+  var sparkBox = { w: 1, h: 1 };
+
+  function measure(canvas, ctx) {
     var dpr = window.devicePixelRatio || 1;
     var rect = canvas.getBoundingClientRect();
     var w = Math.max(1, Math.round(rect.width));
@@ -39,6 +46,11 @@
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     return { w: w, h: h };
+  }
+
+  function remeasure() {
+    bugBox = measure(bugCanvas, bugCtx);
+    sparkBox = measure(sparkCanvas, sparkCtx);
   }
 
   function setTone(el, tone) {
@@ -139,9 +151,32 @@
     ctx.restore();
   }
 
+  /* ── animation budget ────────────────────────────────────────────────
+     This canvas sits on the taskbar and is never occluded, so a running rAF
+     loop keeps the compositor and the GPU awake for the entire session, for
+     as long as the app is open. Two rules keep that bounded:
+
+       - 30fps while burning. Indistinguishable from 60 at this size.
+       - Nothing at all while idle. At $0/10min the crawfish has nothing to
+         report, so he holds his pose and the loop stops dead rather than
+         ticking over at a low rate. Spending resumes it. */
+  var FRAME_BUSY = 1000 / 30;
+  var rafId = 0;
+  var lastDraw = 0;
+
   function tick(now) {
-    var box = fitCanvas(bugCanvas, bugCtx);
-    var dt = Math.min(0.05, (now - lastFrame) / 1000);
+    if (spend10 <= 0) {
+      /* One last frame to settle the pose, then stop scheduling. */
+      rafId = 0;
+      drawCrawfish(bugBox, now / 1000, 0);
+      return;
+    }
+    rafId = requestAnimationFrame(tick);
+    if (now - lastDraw < FRAME_BUSY) return;
+    lastDraw = now;
+
+    var box = bugBox;
+    var dt = Math.min(0.2, (now - lastFrame) / 1000);
     lastFrame = now;
 
     var speed = speedFromSpend(spend10);
@@ -167,14 +202,26 @@
     bugX = Math.min(maxX, Math.max(minX, bugX));
 
     drawCrawfish(box, now / 1000, frenzyFromSpend(spend10));
-    requestAnimationFrame(tick);
+  }
+
+  function startAnim() {
+    if (rafId) return;
+    lastFrame = performance.now();
+    lastDraw = 0;
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function stopAnim() {
+    if (!rafId) return;
+    cancelAnimationFrame(rafId);
+    rafId = 0;
   }
 
   /* ── sparkline ───────────────────────────────────────────────────────
      30 one-minute buckets of spend. Shows whether the number you are
      staring at is climbing or already over. */
   function drawSpark() {
-    var box = fitCanvas(sparkCanvas, sparkCtx);
+    var box = sparkBox;
     var ctx = sparkCtx;
     ctx.clearRect(0, 0, box.w, box.h);
     if (!minutes.length) return;
@@ -240,8 +287,30 @@
   }
 
   /* ── tooltip ─────────────────────────────────────────────────────────*/
+  function keyLine(payload) {
+    var k = payload.key;
+    if (!k) return null;
+    var line = "Key  " + k.label;
+    if (k.total > 1) {
+      line += "  (#" + k.rank + " of " + k.total + ", " + (payload.spare_keys || 0) + " spare healthy)";
+    }
+    return line;
+  }
+
   function tooltipFor(limits, burn, payload, err, age) {
     var lines = [];
+    var kl = keyLine(payload);
+    if (kl) {
+      lines.push(kl);
+      var sw = payload.last_switch;
+      if (sw && Date.now() / 1000 - sw.at < 6 * 3600) {
+        lines.push(
+          "  Switched " + QB.dur(Date.now() / 1000 - sw.at) + " ago from " +
+            (sw.from_label || "—") + " (" + sw.reason + ")"
+        );
+      }
+      lines.push("");
+    }
     if (err) {
       lines.push("⚠ Last poll failed: " + err);
       lines.push(
@@ -281,9 +350,29 @@
     if (burn > 0) lines.push("Currently " + QB.usd(burn) + "/h — this is what the forecast uses.");
     lines.push("Crawfish speed follows the last 10 minutes (" + QB.usd(payload.spend_10m) + ").");
     lines.push("");
-    lines.push("Drag to move · wheel to resize · double-click to reset · click to refresh · right-click for stats");
+    lines.push(
+      "Drag to move · wheel to resize · double-click to reset · click to refresh · right-click for stats · middle-click for settings"
+    );
     return lines.join("\n");
   }
+
+  /* A failover switch takes the strip over for a few seconds, then the
+     readout returns on the new key. */
+  var flashUntil = 0;
+  var flashTimer = 0;
+
+  function flash(text, tone, ms) {
+    flashUntil = Date.now() + ms;
+    showNotice(text, tone);
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(function () {
+      flashUntil = 0;
+      if (latestPayload) apply(latestPayload);
+      else hideNotice();
+    }, ms);
+  }
+
+  var latestPayload = null;
 
   function showNotice(text, tone) {
     noticeText.textContent = text;
@@ -300,6 +389,8 @@
   /* ── apply ───────────────────────────────────────────────────────────*/
   function apply(payload) {
     if (!payload) return;
+    latestPayload = payload;
+    if (Date.now() < flashUntil) return;
 
     var err = payload.error || null;
     var limits = QB.collectLimits(payload);
@@ -313,16 +404,18 @@
       drawSpark();
       sparkCap.textContent = "--";
       var setup = err === "no api key";
-      showNotice(setup ? "No API key — tray icon → Settings" : err, setup ? "warn" : "crit");
+      showNotice(setup ? "No API key — click to add one" : err, setup ? "warn" : "crit");
       setTone(chip, setup ? "warn" : "crit");
       chip.classList.remove("is-alarm");
       chip.classList.remove("is-stale");
       chip.title = setup
-        ? "Open the tray icon → Settings and enter the base URL and API key."
-        : err;
+        ? "Click (or middle-click) to open Settings and add a key."
+        : err + "\n\nMiddle-click for settings.";
+      needsSetup = setup;
       return;
     }
 
+    needsSetup = false;
     hideNotice();
 
     /* A dropped request says nothing about the quota, so the figures stay
@@ -330,13 +423,18 @@
     chip.classList.toggle("is-stale", !!err);
 
     spend10 = payload.spend_10m || 0;
+    /* Idle stops the loop dead, so spending has to restart it. */
+    if (spend10 > 0) startAnim();
     minutes = payload.minutes || [];
     drawSpark();
-    sparkCap.textContent = err
+    var capText = err
       ? age == null
         ? "stale"
         : QB.dur(age) + " old"
       : QB.usdc(payload.spend_10m) + "/10m";
+    /* With several keys, say which one the strip is drawing. */
+    var k = payload.key;
+    sparkCap.textContent = k && k.total > 1 ? k.label + " · " + capText : capText;
 
     /* 1h delta is the steadiest rate we have; fall back to the last 10
        minutes scaled up when the hour is still filling. */
@@ -383,17 +481,24 @@
      Below ~430px the sparkline steals room the meters need more. */
   function syncWidth() {
     chip.classList.toggle("is-narrow", chip.clientWidth < 430);
+    /* The class change relaid the strip out, so measure after it. */
+    remeasure();
     drawSpark();
   }
 
   window.addEventListener("DOMContentLoaded", function () {
     var invoke = window.__TAURI__.core.invoke;
     var listen = window.__TAURI__.event.listen;
+    var noop = function () {};
 
-    requestAnimationFrame(tick);
     syncWidth();
+    startAnim();
     if (window.ResizeObserver) new ResizeObserver(syncWidth).observe(chip);
     window.addEventListener("resize", syncWidth);
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) stopAnim();
+      else startAnim();
+    });
 
     /* Keep the last payload so countdowns can be re-rendered between polls. */
     var latest = null;
@@ -401,15 +506,42 @@
       latest = ev.payload;
       apply(ev.payload);
     });
+    listen("key-switched", function (ev) {
+      var sw = ev.payload || {};
+      var failed = sw.sync_errors && sw.sync_errors.length;
+      flash(
+        "↪ Switched to " + (sw.to_label || "next key") + (failed ? " · Claude sync failed" : ""),
+        failed ? "warn" : "ok",
+        8000
+      );
+    });
     setInterval(function () {
-      if (latest) apply(latest);
+      if (latest && !document.hidden) apply(latest);
     }, 30000);
 
-    /* ── pointer: drag to move, click to refresh ───────────────────── */
+    /* ── pointer: drag to move, click to refresh ─────────────────────
+       Deltas are accumulated and flushed once per frame. A pointermove
+       fires far faster than the screen refreshes, and every one of these
+       invokes lands on the UI thread and moves a window docked on the
+       taskbar — sending them raw is what makes the shell stutter. */
     var dragging = false;
     var moved = false;
     var lastX = 0;
     var THRESH = 4;
+    var pendingDx = 0;
+    var dragRaf = 0;
+
+    function flushDrag() {
+      dragRaf = 0;
+      var dx = pendingDx;
+      pendingDx = 0;
+      if (dx !== 0) invoke("nudge_bar", { dx: dx }).catch(noop);
+    }
+
+    function queueDrag(dx) {
+      pendingDx += dx;
+      if (!dragRaf) dragRaf = requestAnimationFrame(flushDrag);
+    }
 
     chip.addEventListener("pointerdown", function (e) {
       if (e.button !== 0) return;
@@ -417,7 +549,7 @@
       moved = false;
       lastX = e.clientX;
       chip.setPointerCapture(e.pointerId);
-      invoke("begin_bar_drag").catch(function () {});
+      invoke("begin_bar_drag").catch(noop);
     });
 
     chip.addEventListener("pointermove", function (e) {
@@ -426,9 +558,8 @@
       if (!moved && Math.abs(dxCss) < THRESH) return;
       moved = true;
       document.body.classList.add("dragging");
-      var dx = Math.round(dxCss * (window.devicePixelRatio || 1));
       lastX = e.clientX;
-      if (dx !== 0) invoke("nudge_bar", { dx: dx }).catch(function () {});
+      queueDrag(Math.round(dxCss * (window.devicePixelRatio || 1)));
     });
 
     function endDrag(e) {
@@ -438,17 +569,32 @@
       try {
         chip.releasePointerCapture(e.pointerId);
       } catch (_) {}
-      invoke("end_bar_drag").catch(function () {});
-      if (!moved) invoke("refresh_now").catch(function () {});
+      /* Land the tail of the drag before the offset is persisted. */
+      if (dragRaf) cancelAnimationFrame(dragRaf);
+      flushDrag();
+      invoke("end_bar_drag").catch(noop);
+      if (!moved) invoke(needsSetup ? "open_settings" : "refresh_now").catch(noop);
     }
     chip.addEventListener("pointerup", endDrag);
     chip.addEventListener("pointercancel", endDrag);
+
+    var pendingDw = 0;
+    var wheelRaf = 0;
+
+    function flushWheel() {
+      wheelRaf = 0;
+      var dw = pendingDw;
+      pendingDw = 0;
+      if (dw !== 0) invoke("nudge_bar_width", { dw: dw }).catch(noop);
+    }
 
     chip.addEventListener(
       "wheel",
       function (e) {
         e.preventDefault();
-        invoke("nudge_bar_width", { dw: e.deltaY > 0 ? -24 : 24 }).catch(function () {});
+        /* High-resolution wheels emit a burst per notch; coalesce as above. */
+        pendingDw += e.deltaY > 0 ? -24 : 24;
+        if (!wheelRaf) wheelRaf = requestAnimationFrame(flushWheel);
       },
       { passive: false }
     );
@@ -456,6 +602,12 @@
     chip.addEventListener("dblclick", function (e) {
       e.preventDefault();
       invoke("reset_bar_position").catch(function () {});
+    });
+
+    chip.addEventListener("auxclick", function (e) {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      invoke("open_settings").catch(noop);
     });
 
     chip.addEventListener("contextmenu", function (e) {

@@ -3,7 +3,10 @@ use std::fs;
 use std::path::PathBuf;
 
 const KEYRING_SERVICE: &str = "dev.quotabar.desktop";
-const KEYRING_USER: &str = "api-key";
+/// Credential-store user of the single key older builds kept.
+pub const LEGACY_KEY_ID: &str = "api-key";
+/// Pseudo id for a key that only exists in this process's environment.
+pub const ENV_KEY_ID: &str = "env";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -33,6 +36,87 @@ pub struct AppConfig {
     /// Offset from the taskbar's left/top edge. None = auto (left of tray cluster).
     #[serde(default)]
     pub bar_offset_x: Option<i32>,
+    /// Stored keys in priority order. Secrets live in the credential store
+    /// under each key's id; only the label and routing live here.
+    #[serde(default)]
+    pub keys: Vec<KeyMeta>,
+    /// Key the bar and Claude settings are pointed at. None = first enabled.
+    #[serde(default)]
+    pub active_key: Option<String>,
+    #[serde(default)]
+    pub failover: FailoverConfig,
+    /// Claude Code settings.json files this app may point at the active key.
+    #[serde(default = "default_targets")]
+    pub claude_targets: Vec<ClaudeTarget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyMeta {
+    pub id: String,
+    pub label: String,
+    /// Proxy for this key. None = the global base URL.
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default = "yes")]
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailoverConfig {
+    /// Move to the next healthy key on its own. Off = the active key only
+    /// changes when you pick one.
+    #[serde(default = "yes")]
+    pub enabled: bool,
+    /// All-model used % at which a key counts as exhausted.
+    #[serde(default = "default_threshold")]
+    pub threshold_pct: f64,
+    /// Go back to a higher-priority key once it has headroom again.
+    #[serde(default = "yes")]
+    pub fail_back: bool,
+}
+
+impl Default for FailoverConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            threshold_pct: default_threshold(),
+            fail_back: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeTarget {
+    pub id: String,
+    /// "local" or "ssh".
+    pub kind: String,
+    /// user@host (or an ssh_config alias) for kind = "ssh".
+    #[serde(default)]
+    pub host: Option<String>,
+    /// settings.json path. None = ~/.claude/settings.json on that machine.
+    #[serde(default)]
+    pub path: Option<String>,
+    /// Rewrite this file's key and base URL whenever the active key changes.
+    #[serde(default)]
+    pub sync: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn default_threshold() -> f64 {
+    98.0
+}
+
+fn default_targets() -> Vec<ClaudeTarget> {
+    vec![ClaudeTarget {
+        id: "local".into(),
+        kind: "local".into(),
+        host: None,
+        path: None,
+        sync: false,
+    }]
 }
 
 impl Default for AppConfig {
@@ -47,6 +131,10 @@ impl Default for AppConfig {
             daily_quota_usd: default_daily_quota_usd(),
             daily_reset_utc: None,
             bar_offset_x: None,
+            keys: vec![],
+            active_key: None,
+            failover: FailoverConfig::default(),
+            claude_targets: default_targets(),
         }
     }
 }
@@ -115,6 +203,20 @@ pub fn load_config() -> AppConfig {
         cfg.daily_quota_usd = default_daily_quota_usd();
     }
     cfg.daily_reset_utc = normalize_reset(cfg.daily_reset_utc.as_deref());
+    cfg.failover.threshold_pct = cfg.failover.threshold_pct.clamp(50.0, 100.0);
+    // Builds before multi-key kept a single secret under the legacy entry.
+    // Adopt it as the first key in place, so nothing is copied or re-stored.
+    if cfg.keys.is_empty() && load_secret(LEGACY_KEY_ID).is_some() {
+        cfg.keys.push(KeyMeta {
+            id: LEGACY_KEY_ID.into(),
+            label: "Primary".into(),
+            base_url: None,
+            enabled: true,
+        });
+    }
+    if !cfg.claude_targets.iter().any(|t| t.kind == "local") {
+        cfg.claude_targets.insert(0, default_targets().remove(0));
+    }
     cfg
 }
 
@@ -156,51 +258,60 @@ pub fn save_config(cfg: &AppConfig) -> Result<(), String> {
     Ok(())
 }
 
-fn keyring_entry() -> Result<keyring::Entry, String> {
-    keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| e.to_string())
+fn keyring_entry(id: &str) -> Result<keyring::Entry, String> {
+    keyring::Entry::new(KEYRING_SERVICE, id).map_err(|e| e.to_string())
 }
 
-pub fn load_api_key() -> Option<String> {
-    if let Ok(entry) = keyring_entry() {
-        if let Ok(value) = entry.get_password() {
-            let trimmed = value.trim().to_string();
-            if !trimmed.is_empty() {
-                return Some(trimmed);
-            }
-        }
-    }
-    for name in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"] {
-        if let Ok(value) = std::env::var(name) {
-            let trimmed = value.trim().to_string();
-            if !trimmed.is_empty() {
-                let _ = store_api_key(&trimmed);
-                return Some(trimmed);
-            }
-        }
-    }
-    None
+pub fn load_secret(id: &str) -> Option<String> {
+    let value = keyring_entry(id).ok()?.get_password().ok()?;
+    let trimmed = value.trim().to_string();
+    (!trimmed.is_empty()).then_some(trimmed)
 }
 
-pub fn store_api_key(key: &str) -> Result<(), String> {
+pub fn store_secret(id: &str, key: &str) -> Result<(), String> {
     let key = key.trim();
     if key.is_empty() {
-        return Ok(());
+        return Err("key is empty".into());
     }
-    keyring_entry()?
+    keyring_entry(id)?
         .set_password(key)
         .map_err(|e| e.to_string())
 }
 
-pub fn has_api_key() -> bool {
-    load_api_key().is_some()
+pub fn delete_secret(id: &str) -> Result<(), String> {
+    match keyring_entry(id)?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
-pub fn key_preview() -> Option<String> {
-    load_api_key().map(|k| {
-        if k.len() <= 8 {
-            "••••".into()
-        } else {
-            format!("{}…{}", &k[..6], &k[k.len() - 4..])
-        }
-    })
+/// Read-only fallback when no key is stored. Copying the environment's key
+/// into the Windows credential store behind the user's back persists a
+/// secret they only meant to expose to this process — Settings is where a
+/// key gets saved, and only when it is typed in.
+pub fn env_key() -> Option<String> {
+    ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]
+        .iter()
+        .filter_map(|name| std::env::var(name).ok())
+        .map(|v| v.trim().to_string())
+        .find(|v| !v.is_empty())
+}
+
+pub fn new_key_id() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("key-{:x}", nanos)
+}
+
+pub fn preview(k: &str) -> String {
+    let chars: Vec<char> = k.chars().collect();
+    if chars.len() <= 12 {
+        "••••".into()
+    } else {
+        let head: String = chars[..8].iter().collect();
+        let tail: String = chars[chars.len() - 4..].iter().collect();
+        format!("{head}…{tail}")
+    }
 }

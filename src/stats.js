@@ -16,7 +16,7 @@
     });
   }
 
-  var state = { stats: null, burn: 0, limits: [] };
+  var state = { stats: null, burn: 0, limits: [], keys: null, keyId: null };
   var chart = { range: "48h", metric: "cost_usd", rows: [], scaleMax: 1, cfg: null };
 
   /* ── band helpers ────────────────────────────────────────────────────
@@ -614,15 +614,114 @@
     }
   }
 
+  /* ── keys ────────────────────────────────────────────────────────────
+     Tabs pick whose history the page draws; the table shows all of them. */
+  function keyCell(limit) {
+    if (!limit) return '<span class="kcell__none">—</span>';
+    var l = QB.normalizeLimit(limit);
+    return (
+      '<div class="kcell t-' +
+      l.tone +
+      '"><span class="kcell__pct num">' +
+      esc(l.locked ? "FULL" : QB.pct(l.usedPct)) +
+      '</span><div class="meter"><div class="meter__fill" style="width:' +
+      Math.min(100, Math.max(0, l.usedPct)).toFixed(1) +
+      '%"></div></div></div>'
+    );
+  }
+
+  function healthChip(k) {
+    if (!k.enabled) return '<span class="chip t-none">Disabled</span>';
+    if (k.health === "exhausted") return '<span class="chip t-crit">' + esc(k.health_reason || "Exhausted") + "</span>";
+    if (k.health === "ok") return '<span class="chip t-ok">Healthy</span>';
+    return '<span class="chip t-warn" title="' + esc(k.health_reason || "") + '">Unknown</span>';
+  }
+
+  function renderKeys() {
+    var v = state.keys;
+    var list = (v && v.keys) || [];
+    var shown = state.stats && state.stats.key_id;
+    el("keyTabs").hidden = list.length < 2;
+    el("secKeys").hidden = list.length < 2;
+    if (list.length < 2) return;
+
+    el("keyTabs").innerHTML = list
+      .map(function (k) {
+        return (
+          '<button data-key="' +
+          esc(k.id) +
+          '"' +
+          (k.id === shown ? ' class="is-on"' : "") +
+          ">" +
+          esc(k.label) +
+          (k.active ? " ●" : "") +
+          "</button>"
+        );
+      })
+      .join("");
+
+    el("keyRows").innerHTML =
+      '<div class="krow is-head"><span>#</span><span>Key</span><span>3h</span><span>daily</span><span>weekly</span><span>Status</span><span>Claude Code</span></div>' +
+      list
+        .map(function (k, i) {
+          return (
+            '<div class="krow' +
+            (k.active ? " is-live" : "") +
+            (k.id === shown ? " is-shown" : "") +
+            '" data-key="' +
+            esc(k.id) +
+            '"><span class="krow__rank num">' +
+            (i + 1) +
+            '</span><span class="krow__name"><b>' +
+            esc(k.label) +
+            (k.active ? " · live" : "") +
+            "</b><span>" +
+            esc(k.preview || "") +
+            "</span></span>" +
+            keyCell(k.three_h) +
+            keyCell(k.daily) +
+            keyCell(k.weekly) +
+            "<span>" +
+            healthChip(k) +
+            '</span><span class="krow__used">' +
+            esc((k.used_in || []).join(", ") || "—") +
+            "</span></div>"
+          );
+        })
+        .join("");
+  }
+
+  function pickKey(e) {
+    var t = e.target.closest("[data-key]");
+    if (!t) return;
+    state.keyId = t.getAttribute("data-key");
+    load();
+  }
+  el("keyTabs").addEventListener("click", pickKey);
+  el("keyRows").addEventListener("click", pickKey);
+
+  el("openSettings").addEventListener("click", function () {
+    invoke("open_settings").catch(function () {});
+  });
+
   /* ── load ────────────────────────────────────────────────────────────*/
   var loading = false;
 
   async function load() {
     if (loading) return;
     loading = true;
+    lastLoad = performance.now();
     try {
-      var s = await invoke("get_stats");
+      var got = await Promise.all([
+        invoke("get_stats", { keyId: state.keyId }),
+        invoke("list_keys").catch(function () {
+          return null;
+        })
+      ]);
+      var s = got[0];
       state.stats = s;
+      state.keys = got[1];
+      renderKeys();
       state.limits = QB.collectLimits(s.latest || {});
 
       state.burn = ratePerHour(findBand(s, "1h"), s) || ratePerHour(findBand(s, "10m"), s) || 0;
@@ -693,8 +792,42 @@
     }, 1400);
   });
 
+  /* ── visibility ──────────────────────────────────────────────────────
+     This window is only ever hidden, never closed, so a bare interval
+     keeps running a dozen SQL queries every 15 seconds for the rest of the
+     session with nobody looking at the result.
+
+     document.hidden alone is not enough to trust across webview versions,
+     so rAF doubles as the probe: it does not fire for a hidden window, and
+     an empty callback costs nothing on one that is already compositing. */
+  var lastBeat = performance.now();
+  (function beat() {
+    lastBeat = performance.now();
+    requestAnimationFrame(beat);
+  })();
+
+  function onScreen() {
+    return !document.hidden && performance.now() - lastBeat < 2000;
+  }
+
+  var lastLoad = 0;
+  var wasOnScreen = true;
+
   wireChart();
   load();
-  setInterval(load, 15000);
-  setInterval(tickCountdowns, 1000);
+
+  setInterval(function () {
+    var now = performance.now();
+    var here = onScreen();
+    if (!here) {
+      wasOnScreen = false;
+      return;
+    }
+    /* Reload on the way back in, then settle into the 15s cadence. The edge
+       is detected here rather than off visibilitychange so it still works
+       if the webview never fires that event. */
+    if (!wasOnScreen || now - lastLoad >= 15000) load();
+    wasOnScreen = true;
+    tickCountdowns();
+  }, 1000);
 })();
