@@ -2,152 +2,219 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Quota Bar Settings</title>
-    <style>
-      html,
-      body {
-        margin: 0;
-        background: #1b1b1b;
-        color: #f2f2f2;
-        font: 13px/1.4 "Segoe UI Variable", "Segoe UI", sans-serif;
-      }
-      main {
-        padding: 18px 18px 12px;
-        display: grid;
-        gap: 12px;
-      }
-      h1 {
-        font-size: 15px;
-        margin: 0 0 4px;
-        font-weight: 650;
-      }
-      p {
-        margin: 0;
-        color: #b5b5b5;
-      }
-      label {
-        display: grid;
-        gap: 4px;
-        color: #d0d0d0;
-      }
-      input {
-        background: #2a2a2a;
-        border: 1px solid #3a3a3a;
-        color: #fff;
-        border-radius: 6px;
-        padding: 8px 10px;
-        font: inherit;
-      }
-      input:focus {
-        outline: 1px solid #3dd68c;
-      }
-      .row {
-        display: flex;
-        gap: 8px;
-        justify-content: flex-end;
-        margin-top: 8px;
-      }
-      button {
-        border: 0;
-        border-radius: 6px;
-        padding: 8px 12px;
-        font: inherit;
-        cursor: pointer;
-      }
-      .primary {
-        background: #3dd68c;
-        color: #102018;
-        font-weight: 650;
-      }
-      .ghost {
-        background: #2f2f2f;
-        color: #eee;
-      }
-      .ok {
-        color: #3dd68c;
-        min-height: 1.2em;
-      }
-      .warn {
-        color: #9a9a9a;
-        font-size: 12px;
-      }
-    </style>
+    <title>Quota Bar — Settings</title>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="settings.css" />
   </head>
   <body>
-    <main>
-      <div>
-        <h1>Quota Bar</h1>
-        <p>Key stays in Windows Credential Manager. Usage is logged to SQLite.</p>
+    <div class="app">
+      <aside class="side">
+        <div class="brand">
+          <div class="brand__mark">🦞</div>
+          <div>
+            <div class="brand__name">Quota Bar</div>
+            <div class="brand__ver">Settings</div>
+          </div>
+        </div>
+        <button class="nav is-on" data-pane="keys">
+          <span class="nav__icon">🔑</span>Keys<span class="nav__count num" id="navKeyCount"></span>
+        </button>
+        <button class="nav" data-pane="claude">
+          <span class="nav__icon">⌘</span>Claude Code<span class="nav__count num" id="navTargetCount"></span>
+        </button>
+        <button class="nav" data-pane="general"><span class="nav__icon">⚙</span>General</button>
+
+        <div class="side__foot">
+          <span>Live key</span>
+          <span class="side__live">
+            <span class="chip t-none" id="liveChip"><span class="chip__dot"></span></span>
+            <b id="liveLabel">—</b>
+          </span>
+        </div>
+      </aside>
+
+      <div class="main">
+        <!-- ── keys ──────────────────────────────────────────────────── -->
+        <section class="pane" id="pane-keys">
+          <div class="pane__head">
+            <h1>Keys</h1>
+            <p>
+              Every key is read on each poll. Secrets stay in Windows Credential Manager; the order
+              below is the failover order.
+            </p>
+          </div>
+
+          <div class="card">
+            <div class="card__title">Failover</div>
+            <label class="switch">
+              <input type="checkbox" id="foEnabled" />
+              <span class="switch__text">
+                <span class="lab">Switch keys automatically</span>
+                <span class="help">
+                  When the live key is refused (401/403/429) or an all-model limit reaches the
+                  threshold, move to the next healthy key. Fable-only limits never trigger a switch.
+                </span>
+              </span>
+            </label>
+            <div class="grid2">
+              <label>
+                <span class="lab">Threshold (% used)</span>
+                <input id="foThreshold" type="number" min="50" max="100" step="1" />
+              </label>
+              <label class="switch" style="align-self: end; padding-bottom: 6px">
+                <input type="checkbox" id="foFailBack" />
+                <span class="switch__text">
+                  <span class="lab">Fail back</span>
+                  <span class="help">Return to a higher key once it is 10%p under the threshold.</span>
+                </span>
+              </label>
+            </div>
+            <div class="switchlog" id="switchLog" hidden></div>
+          </div>
+
+          <div class="keys" id="keyList"></div>
+
+          <div class="card" id="addCard">
+            <div class="card__title">Add a key</div>
+            <div class="grid3">
+              <label>
+                <span class="lab">Label</span>
+                <input id="newLabel" placeholder="e.g. Team B" autocomplete="off" />
+              </label>
+              <label>
+                <span class="lab">Key</span>
+                <input id="newSecret" class="mono" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" />
+              </label>
+              <label>
+                <span class="lab">Base URL <span class="help">(optional)</span></span>
+                <input id="newBase" placeholder="global URL" spellcheck="false" />
+              </label>
+            </div>
+            <div class="row">
+              <span class="probe grow" id="newProbe"></span>
+              <button id="newTest">Test</button>
+              <button class="primary" id="newAdd">Add key</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── claude code ───────────────────────────────────────────── -->
+        <section class="pane" id="pane-claude" hidden>
+          <div class="pane__head">
+            <h1>Claude Code</h1>
+            <p>
+              Edits <code>env</code> and <code>model</code> in each machine's
+              <code>~/.claude/settings.json</code>. Everything else in the file is left as is, and a
+              <code>.quotabar-bak</code> copy is written first.
+            </p>
+          </div>
+
+          <div id="targetList" class="keys"></div>
+
+          <div class="card">
+            <div class="card__title">Add a remote machine</div>
+            <div class="grid2">
+              <label>
+                <span class="lab">SSH host</span>
+                <input id="newHost" placeholder="main@mdc-server" spellcheck="false" autocomplete="off" />
+              </label>
+              <label>
+                <span class="lab">settings.json path <span class="help">(optional)</span></span>
+                <input id="newPath" placeholder="~/.claude/settings.json" spellcheck="false" />
+              </label>
+            </div>
+            <div class="row">
+              <span class="help grow">
+                Uses your own <code>ssh</code> and <code>~/.ssh/config</code>, key auth only
+                (BatchMode). Running Claude sessions pick up a new key on their next start.
+              </span>
+              <button class="primary" id="addHost">Add</button>
+            </div>
+          </div>
+
+          <div class="row">
+            <span class="help grow">
+              Targets with <b>Follow the live key</b> on are rewritten whenever failover switches keys.
+            </span>
+            <button id="syncNow">Push live key now</button>
+            <button id="reloadTargets">Reload all</button>
+          </div>
+        </section>
+
+        <!-- ── general ───────────────────────────────────────────────── -->
+        <section class="pane" id="pane-general" hidden>
+          <div class="pane__head">
+            <h1>General</h1>
+            <p>Connection, cost basis and the taskbar strip.</p>
+          </div>
+
+          <div class="card">
+            <div class="card__title">Connection</div>
+            <label>
+              <span class="lab">Base URL</span>
+              <input id="base" placeholder="https://your-proxy.example" spellcheck="false" />
+              <span class="help">
+                Anthropic-compatible proxy. Usage is read from <code>/v1/usage/self</code>. A key with
+                its own base URL overrides this.
+              </span>
+            </label>
+            <label>
+              <span class="lab">Poll interval (seconds)</span>
+              <input id="interval" type="number" min="15" step="5" />
+              <span class="help">Minimum 15. One read per key per interval; no message requests are ever sent.</span>
+            </label>
+          </div>
+
+          <div class="card">
+            <div class="card__title">Cost basis</div>
+            <div class="grid2">
+              <label>
+                <span class="lab">Subscription (USD / month)</span>
+                <input id="pro" type="number" min="0" step="1" />
+              </label>
+              <label>
+                <span class="lab">Daily quota (USD)</span>
+                <input id="dailyQuota" type="number" min="1" step="100" />
+              </label>
+            </div>
+            <label>
+              <span class="lab">Daily reset (UTC, HH:MM)</span>
+              <input id="reset" placeholder="e.g. 06:34" autocomplete="off" spellcheck="false" />
+              <span class="help">
+                Blank counts a rolling 24 hours. Pairs with the daily quota for the
+                <b>Since reset</b> figure in the stats window; the strip draws the proxy's own limits.
+              </span>
+            </label>
+          </div>
+
+          <div class="card">
+            <div class="card__title">Taskbar strip</div>
+            <label>
+              <span class="lab">Bar width (px)</span>
+              <input id="width" type="number" min="280" max="800" step="20" />
+              <span class="help">
+                The mouse wheel over the strip also resizes it. At 430px and wider a 30-minute
+                sparkline appears on the right.
+              </span>
+            </label>
+          </div>
+
+          <div class="note">
+            The strip draws the <b>limits[]</b> from <b>GET /v1/usage/self</b> for the live key. The top
+            row is the binding limit, the one that runs out first; the bottom row is the longest window.
+            The white tick on each meter is the pace marker.
+          </div>
+        </section>
       </div>
-      <label>
-        Base URL
-        <input id="base" placeholder="https://claude.nekos.me" />
-      </label>
-      <label>
-        API key
-        <input id="key" type="password" autocomplete="off" placeholder="비워 두면 기존 키를 유지합니다" />
-      </label>
-      <label>
-        Poll interval (seconds)
-        <input id="interval" type="number" min="15" step="15" />
-      </label>
-      <label>
-        Claude Pro monthly (USD)
-        <input id="pro" type="number" min="0" step="1" />
-      </label>
-      <label>
-        Daily reset time (UTC, HH:MM — 비우면 최근 24시간 기준)
-        <input id="reset" placeholder="예: 06:34" autocomplete="off" />
-      </label>
-      <div class="warn">프록시의 일일 한도는 정해진 시각에 리셋됩니다(429 본문의 "Resets at …Z"). 시각을 넣으면 하루 쿼터 %가 "리셋 이후 사용량" 기준으로 바뀌고 다음 리셋까지 남은 시간을 보여줍니다.</div>
-      <div class="warn">이득 = API 환산(total_cost_usd) − Claude Pro 월 요금(기본 $20). GET /v1/usage/self만 호출하고 1분마다 SQLite에 남깁니다.</div>
-      <div class="ok" id="status"></div>
-      <div class="row">
-        <button class="ghost" id="cancel">Close</button>
-        <button class="primary" id="save">Save</button>
-      </div>
-    </main>
-    <script>
-      const { invoke } = window.__TAURI__.core;
-      const { getCurrentWindow } = window.__TAURI__.window;
+    </div>
 
-      async function load() {
-        const cfg = await invoke("get_settings");
-        document.getElementById("base").value = cfg.base_url || "";
-        document.getElementById("interval").value = cfg.poll_interval_secs || 60;
-        document.getElementById("pro").value = cfg.pro_usd || 20;
-        document.getElementById("reset").value = cfg.daily_reset_utc || "";
-        document.getElementById("key").placeholder = cfg.has_key
-          ? "자격 증명 관리자에 저장됨 (비워 두면 유지)"
-          : "여기에 붙여 넣고 저장하세요";
-      }
+    <div class="actions">
+      <span class="msg" id="msg"></span>
+      <button id="cancel">Close</button>
+      <button class="primary" id="save" hidden>Save</button>
+    </div>
 
-      document.getElementById("save").onclick = async () => {
-        const status = document.getElementById("status");
-        status.textContent = "Saving…";
-        try {
-          await invoke("save_settings", {
-            settings: {
-              base_url: document.getElementById("base").value.trim(),
-              poll_interval_secs: Number(document.getElementById("interval").value),
-              pro_usd: Number(document.getElementById("pro").value),
-              daily_reset_utc: document.getElementById("reset").value.trim() || null,
-              api_key: document.getElementById("key").value,
-            },
-          });
-          document.getElementById("key").value = "";
-          status.textContent = "Saved.";
-          await invoke("refresh_now");
-        } catch (e) {
-          status.textContent = String(e);
-        }
-      };
-
-      document.getElementById("cancel").onclick = async () => {
-        await getCurrentWindow().hide();
-      };
-
-      load();
-    </script>
+    <script src="common.js"></script>
+    <script src="settings.js"></script>
   </body>
 </html>

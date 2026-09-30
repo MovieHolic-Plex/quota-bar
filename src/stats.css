@@ -1,0 +1,742 @@
+/* Quota Bar — stats window.
+   The chart is the page. Everything above it collapses to one strip that
+   answers "what stops me first"; everything below it is reference. */
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 var(--font);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2c313a;
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a414c;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+main {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 22px 30px;
+}
+
+/* ── header ────────────────────────────────────────────────────────────*/
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 0 13px;
+  background: linear-gradient(180deg, var(--bg) 76%, rgba(13, 14, 17, 0));
+}
+
+.top__mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--brand-soft);
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.top__title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.top__sub {
+  font-size: 12px;
+  color: var(--faint);
+  margin: 1px 0 0;
+}
+
+.top__spacer {
+  flex: 1;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 7px 13px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn:hover {
+  background: var(--surface-3);
+  border-color: #333a44;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn.is-busy {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.stamp {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--crit-soft);
+  border: 1px solid rgba(255, 77, 77, 0.35);
+  color: #ffb3ad;
+  font-size: 12.5px;
+  margin-bottom: 14px;
+}
+
+/* Stale is not broken: the numbers are real, just older than one poll. */
+.banner--warn {
+  background: var(--warn-soft);
+  border-color: rgba(255, 192, 67, 0.35);
+  color: #ffdca0;
+}
+
+/* ── section scaffolding ───────────────────────────────────────────────*/
+section {
+  margin-top: 22px;
+}
+
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 9px;
+}
+
+.sec-head h2 {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.sec-head .hint {
+  font-size: 11.5px;
+  color: var(--faint);
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+/* ── binding limit strip ───────────────────────────────────────────────
+   One line of answer. It used to be a whole panel; the chart needs the
+   room more than a restatement of four numbers does. */
+.bind {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--tone, var(--faint));
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 11px 15px 12px;
+}
+
+.bind__main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bind__name {
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bind__pct {
+  font-size: 23px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--tone, var(--text));
+  min-width: 74px;
+}
+
+.bind .meter {
+  flex: 1 1 auto;
+  min-width: 90px;
+  height: 10px;
+}
+
+.bind__fig {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.bind__fig b {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.bind__note {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: #c3cad4;
+}
+
+.bind__note b {
+  color: var(--tone, var(--text));
+  font-weight: 700;
+}
+
+.bind__note-icon {
+  color: var(--tone, var(--muted));
+  font-weight: 700;
+  margin-right: 5px;
+}
+
+/* ── chart ─────────────────────────────────────────────────────────────*/
+#secChart .sec-head .tabs {
+  margin-left: auto;
+}
+
+.chartbox {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 13px 16px 12px;
+}
+
+.chart__readout {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  min-height: 22px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.chart__readout .when {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.chart__readout .big {
+  color: var(--brand);
+  font-weight: 750;
+  font-size: 16px;
+}
+
+.chart__readout b {
+  color: #dfe4ea;
+  font-weight: 650;
+}
+
+.chart {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  grid-template-rows: 1fr auto;
+  column-gap: 9px;
+  /* Axis labels are centred on their gridline, so the top and bottom ones
+     overhang the plot box by half a line. Leave them room. */
+  padding-top: 10px;
+}
+
+.chart__y,
+.chart__plot {
+  height: 320px;
+}
+
+.chart__y {
+  position: relative;
+}
+
+.chart__y i {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  font-size: 10.5px;
+  color: var(--faint);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart__plot {
+  position: relative;
+  cursor: crosshair;
+}
+
+.chart__grid i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--line-soft);
+}
+
+.chart__avg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed rgba(255, 122, 34, 0.5);
+  pointer-events: none;
+}
+
+.chart__bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.chart__bar {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(180deg, #ff9a4a, #e8641a);
+  transition: opacity 0.12s ease;
+}
+
+.chart__bar.is-zero {
+  background: rgba(255, 255, 255, 0.06);
+  height: 2px !important;
+  border-radius: 1px;
+}
+
+.chart__plot.is-hover .chart__bar {
+  opacity: 0.38;
+}
+.chart__plot.is-hover .chart__bar.is-on {
+  opacity: 1;
+}
+
+.chart__cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.32);
+  pointer-events: none;
+  display: none;
+}
+
+.chart__x {
+  grid-column: 2;
+  position: relative;
+  height: 16px;
+  margin-top: 6px;
+}
+
+.chart__x i {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 10.5px;
+  color: var(--faint);
+  font-style: normal;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── limit rows ────────────────────────────────────────────────────────
+   Dense enough to compare four windows at a glance, which cards were not. */
+.rows {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.rows__head,
+.lrow {
+  display: grid;
+  grid-template-columns: 150px 54px minmax(110px, 1fr) 112px 96px 76px;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 15px;
+}
+
+.rows__head {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--faint);
+}
+
+.lrow + .lrow {
+  border-top: 1px solid var(--line-soft);
+}
+
+.lrow:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.lrow__name {
+  font-size: 12.5px;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.lrow__dot {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--tone, var(--faint));
+}
+
+.lrow__pct {
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--tone, var(--text));
+  text-align: right;
+}
+
+.lrow__cell {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.lrow__cell b {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.lrow__pace {
+  font-size: 12px;
+  font-weight: 650;
+  text-align: right;
+}
+
+.lrow__pace.over {
+  color: var(--hot);
+}
+.lrow__pace.under {
+  color: var(--ok);
+}
+
+.r {
+  text-align: right;
+}
+
+/* ── stat tiles ────────────────────────────────────────────────────────*/
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 11px 13px 12px;
+}
+
+.tile__k {
+  font-size: 11px;
+  color: var(--faint);
+  font-weight: 600;
+}
+
+.tile__v {
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  margin-top: 5px;
+  line-height: 1.15;
+}
+
+.tile__sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.tile--good .tile__v {
+  color: var(--ok);
+}
+.tile--bad .tile__v {
+  color: var(--crit);
+}
+
+.tokenmix {
+  margin-top: 10px;
+}
+.tokenmix__bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.tokenmix__bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--brand);
+}
+.tokenmix__leg {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 7px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.tokenmix__swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.tokenmix__swatch.is-cached {
+  background: var(--brand);
+}
+.tokenmix__swatch.is-other {
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* ── tabs ──────────────────────────────────────────────────────────────*/
+.tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.tabs button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 11px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tabs button:hover {
+  color: var(--text);
+}
+
+.tabs button.is-on {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+/* ── keys ──────────────────────────────────────────────────────────────
+   One row per key, same grammar as the limit rows. */
+.krow {
+  display: grid;
+  grid-template-columns: 22px minmax(120px, 1.2fr) repeat(3, minmax(84px, 1fr)) minmax(90px, 0.9fr) minmax(110px, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 9px 15px;
+  cursor: pointer;
+}
+.krow + .krow {
+  border-top: 1px solid var(--line-soft);
+}
+.krow:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+.krow.is-shown {
+  background: rgba(255, 122, 34, 0.06);
+}
+.krow.is-head {
+  cursor: default;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--faint);
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.krow__rank {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 750;
+}
+.krow.is-live .krow__rank {
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+.krow__name {
+  display: grid;
+  min-width: 0;
+}
+.krow__name b {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.krow__name span {
+  font-size: 11px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kcell {
+  display: grid;
+  gap: 3px;
+}
+.kcell__pct {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--tone, var(--text));
+}
+.kcell .meter {
+  height: 4px;
+}
+.kcell__none {
+  color: var(--faint);
+  font-size: 12px;
+}
+.krow__used {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── table ─────────────────────────────────────────────────────────────*/
+.tablebox {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+}
+
+th,
+td {
+  text-align: right;
+  padding: 8px 15px;
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+}
+
+thead th {
+  color: var(--faint);
+  font-weight: 600;
+  font-size: 11px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+tbody tr + tr td {
+  border-top: 1px solid var(--line-soft);
+}
+
+tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+tbody tr.is-anchor td {
+  background: var(--brand-soft);
+}
+
+td.name {
+  font-weight: 600;
+}
+
+.tagmark {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 650;
+  vertical-align: 1px;
+}
+
+/* ── misc ──────────────────────────────────────────────────────────────*/
+.empty {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 24px 20px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--surface);
+  margin-top: 22px;
+}
+
+.empty b {
+  display: block;
+  color: var(--text);
+  font-size: 13.5px;
+  margin-bottom: 5px;
+}
+
+.foot {
+  margin-top: 20px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--faint);
+  font-size: 11.5px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+[hidden] {
+  display: none !important;
+}

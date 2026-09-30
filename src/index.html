@@ -1,49 +1,52 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Quota Bar</title>
+    <link rel="stylesheet" href="theme.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div id="chip" class="bar" title="Click to refresh · Right-click for stats">
-      <canvas id="bug" width="84" height="40"></canvas>
-      <div class="info">
-        <div class="col">
-          <div class="row">
-            <span class="lbl">10m</span>
-            <span class="val" id="m10">--</span>
+    <div id="chip" class="bar t-none">
+      <!-- peripheral signal: takes the colour of whichever limit bites first -->
+      <div class="bar__spine" id="spine"></div>
+
+      <canvas id="bug" class="bar__bug"></canvas>
+
+      <div class="bar__rows" id="rows">
+        <div class="mrow" id="rowTop">
+          <span class="mrow__lbl">--</span>
+          <div class="meter">
+            <div class="meter__fill"></div>
+            <div class="meter__pace" hidden></div>
           </div>
-          <div class="row">
-            <span class="lbl">1h</span>
-            <span class="val" id="h1">--</span>
-          </div>
+          <span class="mrow__pct num">--</span>
+          <span class="mrow__aux num"></span>
         </div>
-        <div class="col quota">
-          <div class="row quota-row">
-            <span class="lbl">day</span>
-            <div class="track"><div class="fill" id="dayFill"></div></div>
-            <span class="pct" id="dayPct">--</span>
+        <div class="mrow" id="rowBottom">
+          <span class="mrow__lbl">--</span>
+          <div class="meter">
+            <div class="meter__fill"></div>
+            <div class="meter__pace" hidden></div>
           </div>
-          <div class="row quota-row">
-            <span class="lbl">week</span>
-            <div class="track"><div class="fill" id="weekFill"></div></div>
-            <span class="pct" id="weekPct">--</span>
-          </div>
-        </div>
-        <div class="col">
-          <div class="row">
-            <span class="lbl">3h</span>
-            <span class="val" id="h3">--</span>
-          </div>
-          <div class="row">
-            <span class="lbl">fab</span>
-            <span class="val" id="fab">--</span>
-          </div>
+          <span class="mrow__pct num">--</span>
+          <span class="mrow__aux num"></span>
         </div>
       </div>
+
+      <div class="bar__spark" id="sparkWrap">
+        <canvas id="spark"></canvas>
+        <span class="bar__spark-cap num" id="sparkCap">--</span>
+      </div>
+
+      <div class="bar__notice" id="notice" hidden>
+        <span class="bar__notice-dot"></span>
+        <span id="noticeText">Starting…</span>
+      </div>
     </div>
+
+    <script src="common.js"></script>
     <script src="main.js"></script>
   </body>
 </html>
